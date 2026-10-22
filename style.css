@@ -187,7 +187,6 @@ button { cursor: pointer; }
   position: relative; display: flex; align-items: center; gap: 14px;
   flex: 1; min-width: 0; align-self: stretch; padding: 8px 0 8px 2px; cursor: pointer;
 }
-.boss { min-height: 56px; padding-right: 0; }
 .q-check { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
 .q-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .q-tag {
@@ -308,7 +307,6 @@ button { cursor: pointer; }
 .wd.is-sel { outline: 2px solid var(--text); outline-offset: 1px; }
 .wd.is-today small { color: var(--accent-text); font-weight: 600; }
 
-.boss { margin-top: 8px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .review { display: grid; gap: 10px; margin-top: 22px; }
 .review h3 { font-family: var(--font-display); font-size: 1rem; font-weight: 600; }
 .review h3 span { margin-left: 8px; color: var(--accent-text); font-weight: 500; }
@@ -342,8 +340,8 @@ button { cursor: pointer; }
 .ach.on b { color: var(--text); }
 
 /* ---------- edit tab ---------- */
-.seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 14px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
-.seg-btn { padding: 8px 0; border: 0; border-radius: 7px; background: none; color: var(--muted); font-size: .9rem; font-weight: 500; }
+.seg { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-top: 14px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.seg-btn { padding: 8px 0; border: 0; border-radius: 7px; background: none; color: var(--muted); font-size: .85rem; font-weight: 500; }
 .seg-btn.active { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
 
 .edit-list { margin: 8px 0 14px; }
