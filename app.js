@@ -62,29 +62,29 @@ const defaultConfig = {
     { id: "e12", tier: 0, name: "Long run 5K+", xp: 80, attr: "VITALITY", weeklyOnce: true },
     { id: "e13", tier: 0, name: "Social group activities", xp: 60, attr: "VOICE" },
     { id: "e16", tier: 0, name: "Animate for Yourself 2h", xp: 120, attr: "CRAFT", weeklyOnce: true },
+    { id: "e7", tier: 0, name: "Clean eating day", xp: 20, attr: "VITALITY" },
 
     // Tier 1 Extras
     { id: "e1", tier: 1, name: "Flashcards review, 15 min", xp: 20, attr: "VOICE" },
     { id: "e1a", parent: "e1", name: "Adding new phrases", xp: 15 },
-    { id: "e2", tier: 1, name: "Brain dump writing", xp: 20, attr: "SPIRIT" },
-    { id: "e2a", parent: "e2", name: "Rewrite 5 sentences by hand", xp: 20 },
-    { id: "e3", tier: 1, name: "Tidy your room", xp: 25, attr: "FOCUS" },
-    { id: "e4", tier: 1, name: "Pose Try / Draw pose", xp: 20, attr: "CRAFT" },
-    { id: "e5", tier: 1, name: "Reaching out to someone", xp: 20, attr: "VOICE" },
-    { id: "e6", tier: 1, name: "Read Reddit/Discord phrases", xp: 20, attr: "VOICE" },
-    { id: "e7", tier: 1, name: "Clean eating day", xp: 20, attr: "VITALITY" },
-
-    // Tier 2 Extras
-    { id: "e8", tier: 2, name: "Rig course progress 30m", xp: 20, attr: "CRAFT" },
+    { id: "e8", tier: 1, name: "Rig course progress 30m", xp: 20, attr: "CRAFT" },
     { id: "e8a", parent: "e8", name: "+ 2 hours", xp: 30 },
-    { id: "e9", tier: 2, name: "Deep watch productive", xp: 20, attr: "CRAFT" },
+    { id: "e9", tier: 1, name: "Deep watch productive", xp: 20, attr: "CRAFT" },
     { id: "e9a", parent: "e9", name: "Note the insight learned", xp: 25 },
-    { id: "e10", tier: 2, name: "Watch movie/series", xp: 30, attr: "SPIRIT" },
+    { id: "e10", tier: 1, name: "Watch movie/series", xp: 30, attr: "SPIRIT" },
     { id: "e10a", parent: "e10", name: "Write summary/lessons", xp: 20 },
     { id: "e10b", parent: "e10", name: "Save references PureRef", xp: 15 },
     { id: "e10c", parent: "e10", name: "Speak out loud feelings", xp: 15 },
-    { id: "e14", tier: 2, name: "Anim Watch & Analyze 30m", xp: 40, attr: "CRAFT" },
-    { id: "e15", tier: 2, name: "Record yourself speaking", xp: 40, attr: "VOICE" }
+    { id: "e14", tier: 1, name: "Anim Watch & Analyze 30m", xp: 40, attr: "CRAFT" },
+    { id: "e15", tier: 1, name: "Record yourself speaking", xp: 40, attr: "VOICE" },
+
+    // Tier 2 Extras
+    { id: "e2", tier: 2, name: "Brain dump writing", xp: 20, attr: "SPIRIT" },
+    { id: "e2a", parent: "e2", name: "Rewrite 5 sentences by hand", xp: 20 },
+    { id: "e3", tier: 2, name: "Tidy your room", xp: 25, attr: "FOCUS" },
+    { id: "e4", tier: 2, name: "Pose Try / Draw pose", xp: 20, attr: "CRAFT" },
+    { id: "e5", tier: 2, name: "Reaching out to someone", xp: 20, attr: "VOICE" },
+    { id: "e6", tier: 2, name: "Read Reddit/Discord phrases", xp: 20, attr: "VOICE" }
   ],
   enemies: [
     { id: "en1", name: "Dwelling on past/anxiety", xp: 30, isTime: true },
@@ -116,6 +116,7 @@ const defaultConfig = {
 // --- 2. CONSTANTS & HELPERS ---
 const STORAGE_KEY = 'habitGamifiedDB';
 const T1_REQ = 220;
+const T2_REQ = 300;
 const COUNT_BONUS_IN_SEASON = true;
 const REVIEW_XP = 50;
 const GRADES = [['D', 100], ['C', 220], ['B', 350], ['A', 500], ['S', 650]];
@@ -190,7 +191,7 @@ function normalize(raw) {
   ['mainQuests', 'extras', 'enemies', 'achievements', 'ranks'].forEach(k => {
     if (!Array.isArray(d.config[k])) d.config[k] = clone(defaultConfig[k]);
   });
-  const optIds = ['e11', 'e12', 'e13', 'e16'];
+  const optIds = ['e11', 'e12', 'e13', 'e16', 'e7'];
   d.config.extras.forEach(item => {
     if (optIds.includes(item.id)) item.tier = 0;
   });
@@ -246,11 +247,6 @@ function dayIsClear(key) {
   const log = db.logs[key]; if (!log) return false;
   const m = mainsFor(key);
   return m.length > 0 && m.every(q => log.ticked[q.id]);
-}
-
-function t2Req(key) {
-  const m = parseInt(key.slice(5, 7), 10) - 1;
-  return m === 9 ? 400 : (m === 10 ? 425 : 450);
 }
 
 function calcDayStats(key) {
@@ -416,11 +412,11 @@ function checkAchievements() {
     'a2': () => maxEarly >= 7,
     'a3': () => maxMonk >= 7,
     'a4': () => voiceDays >= 20,
-    'a5': () => e16Count >= 3, // Animate for Yourself
+    'a5': () => e16Count >= 3,
     'a6': () => maxUntouchableWeek >= 7,
     'a7': () => comebacks >= 3,
     'a8': () => rigHours >= 13,
-    'a9': () => e12Count >= 5, // Proxy: 5 Long Runs
+    'a9': () => e12Count >= 5,
     'a10': () => logKeys.length >= 90
   };
 
@@ -478,7 +474,6 @@ function renderUI() {
   renderEnemies(log, s);
   renderBreakdown(s);
   
-  // Settings Tab Update
   if($('setting-name'))$('setting-name').value = db.config.playerName || '';
   if($('setting-pin'))$('setting-pin').value = db.config.pin || '000';
 
@@ -559,7 +554,7 @@ function renderQuests(s, log) {
   }
 
   renderTier(1, T1_REQ, s, log);
-  renderTier(2, t2Req(currentDate), s, log);
+  renderTier(2, T2_REQ, s, log);
 }
 
 function renderTier(n, req, s, log) {
@@ -754,7 +749,7 @@ function renderAchievements() {
 // --- 9. EVENTS ---
 function snapshot() {
   const s = stats(currentDate);
-  return { clear: s.isClear, t1: s.base >= T1_REQ, t2: s.base >= t2Req(currentDate) };
+  return { clear: s.isClear, t1: s.base >= T1_REQ, t2: s.base >= T2_REQ };
 }
 
 function onQuestToggle(el) {
@@ -826,7 +821,7 @@ document.addEventListener('click', e => {
   const secFold = t.closest('[data-sec-fold]');
   if (secFold) {
     const key = `sec-${secFold.dataset.secFold}`;
-    const curr = folds.has(key) ? folds.get(key) : (secFold.dataset.secFold === 'tier1' ? stats(currentDate).base >= T1_REQ : stats(currentDate).base >= t2Req(currentDate));
+    const curr = folds.has(key) ? folds.get(key) : (secFold.dataset.secFold === 'tier1' ? stats(currentDate).base >= T1_REQ : stats(currentDate).base >= T2_REQ);
     folds.set(key, !curr);
     return renderUI();
   }
@@ -1098,7 +1093,7 @@ document.addEventListener('visibilitychange', () => {
   const wasOnToday = currentDate === bootToday;
   bootToday = todayKey();
   if (wasOnToday) setDate(bootToday); else renderUI();
-  checkPinLock(); // Check if day rolled over
+  checkPinLock(); 
 });
 
 setEditCat('mainQuests');
