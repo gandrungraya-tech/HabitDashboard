@@ -5,6 +5,8 @@
 const defaultConfig = {
   playerName: "Player",
   pin: "000",
+  jsonbinKey: "",
+  jsonbinId: "",
   seasonStartDate: "2026-10-01",
   mainQuests: [
     { id: "mq1a", name: "Wake 5 AM or earlier", xp: 20, attr: "VITALITY" },
@@ -187,6 +189,8 @@ function normalize(raw) {
   
   if (!d.config.playerName) d.config.playerName = "Player";
   if (!d.config.pin) d.config.pin = "000";
+  if (d.config.jsonbinKey === undefined) d.config.jsonbinKey = "";
+  if (d.config.jsonbinId === undefined) d.config.jsonbinId = "";
 
   ['mainQuests', 'extras', 'enemies', 'achievements', 'ranks'].forEach(k => {
     if (!Array.isArray(d.config[k])) d.config[k] = clone(defaultConfig[k]);
@@ -347,7 +351,7 @@ function checkPinLock() {
     const pinDialog = $('pin-dialog');
     if (pinDialog && pinDialog.showModal && !pinDialog.open) {
       pinDialog.showModal();
-      pinDialog.addEventListener('cancel', e => e.preventDefault()); // Prevent escaping
+      pinDialog.addEventListener('cancel', e => e.preventDefault());
       if($('pin-input'))$('pin-input').value = '';
     }
   }
@@ -476,6 +480,8 @@ function renderUI() {
   
   if($('setting-name'))$('setting-name').value = db.config.playerName || '';
   if($('setting-pin'))$('setting-pin').value = db.config.pin || '000';
+  if($('setting-jsonbin-key'))$('setting-jsonbin-key').value = db.config.jsonbinKey || '';
+  if($('setting-jsonbin-id'))$('setting-jsonbin-id').value = db.config.jsonbinId || '';
 
   checkAchievements(); 
   renderProgress();
@@ -812,6 +818,22 @@ document.addEventListener('click', e => {
   const t = e.target;
   const nav = t.closest('.nav-btn'); if (nav) return switchTab(nav.dataset.target);
   
+  if (t.closest('#btn-cloud-sync')) {
+    const dlg = $('sync-dialog');
+    if (dlg && dlg.showModal) dlg.showModal();
+    return;
+  }
+  
+  if (t.id === 'btn-sync-push') {
+    e.preventDefault(); $('sync-dialog').close(); pushToCloud(); return;
+  }
+  if (t.id === 'btn-sync-pull') {
+    e.preventDefault(); $('sync-dialog').close(); pullFromCloud('merge'); return;
+  }
+  if (t.id === 'btn-sync-pull-replace') {
+    e.preventDefault(); $('sync-dialog').close(); pullFromCloud('replace'); return;
+  }
+
   if (t.id === 'header-rank') {
     populateProfile();
     $('profile-dialog').showModal();
@@ -843,6 +865,8 @@ document.addEventListener('click', e => {
   if (t.id === 'btn-save-settings') {
     db.config.playerName = $('setting-name').value.trim() || 'Player';
     db.config.pin = $('setting-pin').value.trim() || '000';
+    db.config.jsonbinKey = $('setting-jsonbin-key').value.trim();
+    db.config.jsonbinId = $('setting-jsonbin-id').value.trim();
     saveData();
     toast('Settings saved');
     return;
@@ -863,7 +887,46 @@ if ($('date-picker')) {
   $('date-picker').addEventListener('click', () => { try { $('date-picker').showPicker(); } catch (e) { /* fallback */ } });
 }
 
-// --- 10. PROFILE POPUP LOGIC ---
+// --- 10. CLOUD SYNC LOGIC ---
+async function pushToCloud() {
+  const key = db.config.jsonbinKey;
+  const bin = db.config.jsonbinId;
+  if(!key || !bin) return toast("Set JSONBin Key & ID in Settings first.");
+  
+  toast("Uploading to cloud...");
+  try {
+    db.lastExport = Date.now();
+    const res = await fetch(`https://api.jsonbin.io/v3/b/${bin}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Master-Key': key },
+      body: JSON.stringify(db)
+    });
+    if(res.ok) { toast("Successfully pushed to cloud!"); saveData(); renderBackupInfo(); }
+    else toast("Upload failed. Check your API keys.");
+  } catch(e) { toast("Network error."); }
+}
+
+async function pullFromCloud(mode) {
+  const key = db.config.jsonbinKey;
+  const bin = db.config.jsonbinId;
+  if(!key || !bin) return toast("Set JSONBin Key & ID in Settings first.");
+  
+  toast("Downloading...");
+  try {
+    const res = await fetch(`https://api.jsonbin.io/v3/b/${bin}/latest`, {
+      headers: { 'X-Master-Key': key }
+    });
+    if(res.ok) {
+      const data = await res.json();
+      pendingImport = normalize(data.record);
+      applyImport(mode); 
+    }
+    else toast("Download failed. Check your API keys.");
+  } catch(e) { toast("Network error."); }
+}
+
+
+// --- 11. PROFILE POPUP LOGIC ---
 function populateProfile() {
   const name = db.config.playerName || 'Player';
   $('prof-name').textContent = name;
@@ -898,7 +961,7 @@ function populateProfile() {
   }
 }
 
-// --- 11. EDIT TAB ---
+// --- 12. EDIT TAB ---
 const EDIT_CATS = {
   mainQuests: { arr: 'mainQuests', noun: 'quest' },
   optional: { arr: 'extras', tier: 0, noun: 'quest' },
@@ -1019,7 +1082,7 @@ if ($('btn-reset-defaults')) {
   });
 }
 
-// --- 12. BACKUP ---
+// --- 13. BACKUP ---
 function renderBackupInfo() {
   if ($('last-backup')) {
     $('last-backup').textContent = 'Last backup: ' + (db.lastExport
@@ -1086,7 +1149,7 @@ function applyImport(mode) {
   toast(mode === 'replace' ? 'Backup restored' : 'Backup merged');
 }
 
-// --- 13. BOOT ---
+// --- 14. BOOT ---
 let bootToday = todayKey();
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible' || todayKey() === bootToday) return;
