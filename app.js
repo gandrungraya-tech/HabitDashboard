@@ -1,4 +1,7 @@
-// --- 1. DATA MANAGER & DEFAULTS ---
+/* Habit Gamified: app.js */
+'use strict';
+
+// --- 1. DEFAULT RULES ---
 const defaultConfig = {
   seasonStartDate: "2026-10-01",
   mainQuests: [
@@ -103,388 +106,784 @@ const defaultConfig = {
   ]
 };
 
-let db = { version: 1, config: JSON.parse(JSON.stringify(defaultConfig)), logs: {}, weekly: {}, unlockedAch: [], attributes: { CRAFT:0, VOICE:0, VITALITY:0, SPIRIT:0, FOCUS:0 }, updatedAt: Date.now() };
-function loadData() { const saved = localStorage.getItem('habitGamifiedDB'); if(saved) db = JSON.parse(saved); }
-function saveData() { db.updatedAt = Date.now(); localStorage.setItem('habitGamifiedDB', JSON.stringify(db)); }
-loadData();
+// --- 2. CONSTANTS & HELPERS ---
+const STORAGE_KEY = 'habitGamifiedDB';
+const T1_REQ = 220;                    // quest XP needed to open Extras tier 1
+const COUNT_BONUS_IN_SEASON = true;    // boss, weekly review and achievements add to season XP (rank). Set false to revert.
+const BOSS_XP = 150;
+const REVIEW_XP = 50;
+const GRADES = [['D', 100], ['C', 220], ['B', 350], ['A', 500], ['S', 650]];
+const GRADE_MAX = 650;
+const ATTRS = ['CRAFT', 'VOICE', 'VITALITY', 'SPIRIT', 'FOCUS'];
+const ATTR_LEVELS = [0, 1000, 2500, 4500, 7000];
+const ATTR_TITLES = ['Novice', 'Apprentice', 'Adept', 'Expert', 'Master'];
+const MESSAGES = {
+  S: 'Legendary. Unstoppable.', A: 'Strong day. Almost perfect.', B: 'Good solid day.',
+  C: 'You showed up. Baseline met.', D: 'Partial. Second Wind tomorrow.', F: 'Reset. We go again.'
+};
+const LOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
 
-// --- 2. CORE LOGIC ---
-let currentDate = new Date().toISOString().split('T')[0];
-if(!db.logs[currentDate]) db.logs[currentDate] = { ticked: {}, enemies: [], review: {} };
+const $ = id => document.getElementById(id);
+const clone = o => JSON.parse(JSON.stringify(o));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = n => Number(n).toLocaleString('en-US');
+const cap = s => s.charAt(0) + s.slice(1).toLowerCase();
+const newId = () => 'c' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
 
-function getWeekStr(dStr) {
-  let d = new Date(dStr); d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay()||7));
-  let yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
-  let weekNo = Math.ceil(( ( (d - yearStart) / 86400000) + 1)/7);
+// Dates are handled as local "YYYY-MM-DD" keys. (The old code used toISOString(), which is UTC,
+// so anything you did between midnight and 7 AM in Indonesia landed on the previous day.)
+const pad2 = n => String(n).padStart(2, '0');
+const toKey = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const fromKey = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d, 12); };
+const addDays = (key, n) => { const d = fromKey(key); d.setDate(d.getDate() + n); return toKey(d); };
+const todayKey = () => toKey(new Date());
+const isKey = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
+const dayShort = key => fromKey(key).toLocaleDateString('en-GB', { weekday: 'short' });
+
+function getWeekStr(key) {           // same "YYYY-Wn" format as before, so old data still lines up
+  const [y, m, dd] = key.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1, dd));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
   return `${d.getUTCFullYear()}-W${weekNo}`;
 }
-let currentWeekStr = getWeekStr(currentDate);
-if(!db.weekly[currentWeekStr]) db.weekly[currentWeekStr] = { bonuses: {}, boss: false, review: {} };
-
-function celebrate(msg) {
-  const c = document.getElementById('confetti-container'); c.innerHTML = '';
-  for(let i=0; i<50; i++) {
-    let el = document.createElement('div'); el.className = 'confetti';
-    el.style.left = Math.random() * 100 + 'vw';
-    el.style.backgroundColor = ['#4caf50','#ffd700','#03a9f4','#ff9800'][Math.floor(Math.random()*4)];
-    el.style.animationDuration = (Math.random() * 2 + 1) + 's';
-    c.appendChild(el);
-  }
-  setTimeout(() => c.innerHTML='', 3500);
-  if(msg) alert(`🎉 ${msg} 🎉`);
+function weekDays(key) {             // Monday..Sunday of the week containing key
+  const idx = (fromKey(key).getDay() + 6) % 7;
+  const mon = addDays(key, -idx);
+  return [0, 1, 2, 3, 4, 5, 6].map(i => addDays(mon, i));
 }
 
-// Stats Calculators
-function calcDayStats(dateStr) {
-  const log = db.logs[dateStr]; if(!log) return { base:0, net:0, grade:'F', isClear:false, rawMain:0, untouchable:false };
-  let mains = db.config.mainQuests.filter(q => !q.parent);
-  let mainIds = mains.map(q => q.id);
-  let isClear = mainIds.every(id => log.ticked[id]);
-  
+// --- 3. DATA MANAGER ---
+function freshDB() {
+  return {
+    version: 1, config: clone(defaultConfig), logs: {}, weekly: {}, unlockedAch: [],
+    attributes: { CRAFT: 0, VOICE: 0, VITALITY: 0, SPIRIT: 0, FOCUS: 0 }, updatedAt: Date.now(), lastExport: null
+  };
+}
+
+// Enemies used to be logged once per button press. Now each enemy is a single checkbox per day,
+// so older logs are collapsed (minutes are summed, repeat hits are kept as a count, penalties stay identical).
+function collapseEnemies(list, enemyCfg) {
+  const out = [], map = {};
+  list.forEach(e => {
+    if (!e || !e.id) return;
+    const c = enemyCfg.find(x => x.id === e.id);
+    let m = map[e.id];
+    if (!m) { m = map[e.id] = { id: e.id }; out.push(m); }
+    const timed = c ? c.isTime : e.min !== undefined;
+    if (timed) m.min = (m.min || 0) + (e.min != null ? e.min : 30);
+    else m.n = (m.n || 0) + (e.n || 1);
+  });
+  return out;
+}
+
+function normalize(raw) {
+  const d = Object.assign(freshDB(), raw && typeof raw === 'object' ? raw : {});
+  d.config = Object.assign(clone(defaultConfig), d.config || {});
+  ['mainQuests', 'extras', 'enemies', 'achievements', 'ranks'].forEach(k => {
+    if (!Array.isArray(d.config[k])) d.config[k] = clone(defaultConfig[k]);
+  });
+  if (!d.logs || typeof d.logs !== 'object') d.logs = {};
+  if (!d.weekly || typeof d.weekly !== 'object') d.weekly = {};
+  if (!Array.isArray(d.unlockedAch)) d.unlockedAch = [];
+  for (const k in d.logs) {
+    const l = d.logs[k] = d.logs[k] || {};
+    l.ticked = l.ticked || {};
+    l.review = l.review || {};
+    l.enemies = collapseEnemies(Array.isArray(l.enemies) ? l.enemies : [], d.config.enemies);
+  }
+  for (const w in d.weekly) {
+    const x = d.weekly[w] = d.weekly[w] || {};
+    x.bonuses = x.bonuses || {}; x.boss = !!x.boss; x.review = x.review || {};
+  }
+  return d;
+}
+
+function loadData() {
+  let raw = null;
+  try { raw = localStorage.getItem(STORAGE_KEY); } catch (e) { /* storage blocked */ }
+  if (!raw) return normalize(null);
+  try { return normalize(JSON.parse(raw)); }
+  catch (e) {
+    try { localStorage.setItem(STORAGE_KEY + '_corrupt', raw); } catch (_) { /* ignore */ }
+    return normalize(null);
+  }
+}
+
+let db = loadData();
+const statsCache = new Map();
+function saveData() {
+  statsCache.clear();
+  db.updatedAt = Date.now();
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); } catch (e) { toast('Could not save. Storage is full or blocked.'); }
+}
+
+let currentDate = todayKey();
+let currentWeekStr = getWeekStr(currentDate);
+let reviewLoadedFor = null;
+let editCat = 'mainQuests';
+
+function ensureDay(key) { if (!db.logs[key]) db.logs[key] = { ticked: {}, enemies: [], review: {} }; return db.logs[key]; }
+function ensureWeek(wk) { if (!db.weekly[wk]) db.weekly[wk] = { bonuses: {}, boss: false, review: {} }; return db.weekly[wk]; }
+ensureDay(currentDate); ensureWeek(currentWeekStr);
+
+// --- 4. CORE LOGIC ---
+const tierOf = it => it.tier || (it.parent ? (db.config.extras.find(p => p.id === it.parent) || {}).tier : undefined);
+const mainsFor = key => db.config.mainQuests.filter(q => !q.parent && (!q.from || q.from <= key));
+
+function dayIsClear(key) {
+  const log = db.logs[key]; if (!log) return false;
+  const m = mainsFor(key);
+  return m.length > 0 && m.every(q => log.ticked[q.id]);
+}
+
+function t2Req(key) {
+  const m = parseInt(key.slice(5, 7), 10) - 1;
+  return m === 9 ? 400 : (m === 10 ? 425 : 450);   // Oct 400, Nov 425, otherwise 450
+}
+
+function calcDayStats(key) {
+  const log = db.logs[key];
+  const blank = { base: 0, net: 0, grade: 'F', isClear: false, rawMain: 0, rawSub: 0, rawExtra: 0, mainBonus: 0, penalty: 0, untouchable: false, mult: 1, streak: 0 };
+  if (!log) return blank;
+  const cfg = db.config;
+  const isClear = dayIsClear(key);
+
   let rawMain = 0, rawSub = 0, rawExtra = 0;
-  for(let key in log.ticked) {
-    let pts = log.ticked[key];
-    if(mainIds.includes(key)) rawMain += pts;
-    else if(db.config.mainQuests.find(q => q.id === key)) rawSub += pts;
+  for (const id in log.ticked) {
+    const pts = log.ticked[id];
+    const mq = cfg.mainQuests.find(q => q.id === id);
+    if (mq) { if (mq.parent) rawSub += pts; else rawMain += pts; }
     else rawExtra += pts;
   }
-  
-  let baseTotal = rawMain + rawSub + rawExtra;
+  const base = rawMain + rawSub + rawExtra;      // "quest XP": decides tier unlocks
+
   let penalty = 0;
   log.enemies.forEach(e => {
-    let enConfig = db.config.enemies.find(c => c.id === e.id);
-    if(!enConfig) return;
-    if(enConfig.isTime) penalty += (enConfig.xp * (e.min / 30));
-    else penalty += enConfig.xp;
+    const c = cfg.enemies.find(x => x.id === e.id);
+    if (!c) return;
+    penalty += c.isTime ? c.xp * ((e.min != null ? e.min : 30) / 30) : c.xp * (e.n || 1);
   });
+  penalty = Math.round(penalty);
 
+  let streak = 0, k = addDays(key, -1);
+  while (dayIsClear(k)) { streak++; k = addDays(k, -1); }
   let mult = 1.0;
-  // Calculate streak backwards from this date
-  let streak = 0, tempD = new Date(dateStr); tempD.setDate(tempD.getDate() - 1);
-  while(true) {
-    let dStr = tempD.toISOString().split('T')[0];
-    if(!db.logs[dStr]) break;
-    let prevMains = mains.every(m => db.logs[dStr].ticked[m.id]);
-    if(prevMains) streak++; else break;
-    tempD.setDate(tempD.getDate() - 1);
-  }
-  if(streak >= 14) mult = 1.5; else if(streak >= 7) mult = 1.25; else if(streak >= 3) mult = 1.1;
-  
-  // Second wind simplified: if streak 0 but clear today, 1.2x (unless shields used, simplified to just broken streak)
-  if(streak === 0 && isClear && db.logs[dateStr].ticked) mult = Math.max(mult, 1.2); 
-  
-  let untouchable = isClear && log.enemies.length === 0;
-  let netXP = Math.floor(rawMain * mult) + rawSub + rawExtra + (untouchable ? 30 : 0) - penalty;
-  if(netXP < 0) netXP = 0;
+  if (streak >= 14) mult = 1.5; else if (streak >= 7) mult = 1.25; else if (streak >= 3) mult = 1.1;
+  if (streak === 0 && isClear) mult = Math.max(mult, 1.2);   // Second Wind
+
+  const untouchable = isClear && log.enemies.length === 0;
+  const mainBonus = Math.floor(rawMain * mult) - rawMain;
+  let net = rawMain + mainBonus + rawSub + rawExtra + (untouchable ? 30 : 0) - penalty;
+  if (net < 0) net = 0;
 
   let grade = 'F';
-  if(netXP >= 650) grade = 'S'; else if(netXP >= 500) grade = 'A'; else if(netXP >= 350) grade = 'B'; 
-  else if(netXP >= 220) grade = 'C'; else if(netXP >= 100) grade = 'D';
-
-  return { base: baseTotal, net: netXP, grade, isClear, rawMain, untouchable, mult, streak };
+  for (const [g, thr] of GRADES) if (net >= thr) grade = g;
+  return { base, net, grade, isClear, rawMain, rawSub, rawExtra, mainBonus, penalty, untouchable, mult, streak };
+}
+function stats(key) {
+  if (!statsCache.has(key)) statsCache.set(key, calcDayStats(key));
+  return statsCache.get(key);
 }
 
-function getTier2Req() {
-  let m = new Date(currentDate).getMonth();
-  return m === 9 ? 400 : (m === 10 ? 425 : 450); // Oct=9
-}
-
-function renderUI() {
-  const log = db.logs[currentDate];
-  const stats = calcDayStats(currentDate);
-  const t2Req = getTier2Req();
-  
-  // Header
-  document.getElementById('date-picker').value = currentDate;
-  
-  // Today Tab
-  document.getElementById('day-net-xp').innerText = `${stats.net} XP`;
-  document.getElementById('day-grade').innerText = stats.grade;
-  document.getElementById('day-grade').style.color = `var(--${stats.grade.toLowerCase()}-color)`;
-  let mains = db.config.mainQuests.filter(q => !q.parent);
-  let clearCount = mains.filter(q => log.ticked[q.id]).length;
-  document.getElementById('main-quest-count').innerText = `Main quests ${clearCount}/${mains.length}`;
-  
-  let progPct = Math.min(100, (stats.base / (t2Req+100)) * 100);
-  document.getElementById('day-progress-fill').style.width = `${progPct}%`;
-  
-  const msgs = {S:"Legendary. Unstoppable.", A:"Strong day. Almost perfect.", B:"Good solid day.", C:"You showed up. Baseline met.", D:"Partial. Second Wind tomorrow.", F:"Reset. We go again."};
-  document.getElementById('day-message').innerText = msgs[stats.grade];
-
-  // Render Quests
-  const renderQList = (containerId, items, isLockedSection) => {
-    let html = '';
-    items.forEach(q => {
-      let isSub = !!q.parent;
-      let isChecked = !!log.ticked[q.id];
-      let locked = false;
-      if(isSub) locked = !log.ticked[q.parent];
-      if(q.weeklyOnce && db.logs) {
-         // Check if done earlier this week
-         for(let i=0; i<7; i++) {
-           let d = new Date(currentDate); d.setDate(d.getDate()-i);
-           if(getWeekStr(d.toISOString().split('T')[0]) !== currentWeekStr) break;
-           let dLog = db.logs[d.toISOString().split('T')[0]];
-           if(dLog && dLog.ticked[q.id] && d.toISOString().split('T')[0] !== currentDate) locked = true;
-         }
-      }
-      if(isLockedSection) locked = true;
-      html += `<label class="quest-item ${isSub?'sub-quest':''} ${locked?'locked-section':''}">
-        <input type="checkbox" data-id="${q.id}" class="q-check" ${isChecked?'checked':''} ${locked?'disabled':''}>
-        <span class="custom-check"></span> <span>${q.name}</span>
-        <span class="quest-meta">${q.xp} XP</span>
-      </label>`;
-    });
-    document.getElementById(containerId).innerHTML = html;
-  }
-  
-  renderQList('main-quests-list', db.config.mainQuests, false);
-  
-  let t1Unlocked = stats.base >= 220;
-  document.getElementById('t1-lock').style.display = t1Unlocked ? 'none' : 'block';
-  document.getElementById('t1-lock').innerText = `Unlocks at 220 Base XP. You have ${stats.base}.`;
-  renderQList('t1-list', db.config.extras.filter(e => e.tier === 1), !t1Unlocked);
-  
-  let t2Unlocked = stats.base >= t2Req;
-  document.getElementById('t2-lock').style.display = t2Unlocked ? 'none' : 'block';
-  document.getElementById('t2-lock').innerText = `Unlocks at ${t2Req} Base XP. You have ${stats.base}.`;
-  renderQList('t2-list', db.config.extras.filter(e => e.tier === 2), !t2Unlocked);
-
-  // Enemies
-  let eHtml = '';
-  db.config.enemies.forEach(en => {
-    let hits = log.enemies.filter(e => e.id === en.id).length;
-    eHtml += `<div class="enemy-item">
-      <span>${en.name} (-${en.xp} XP${en.isTime?'/30m':''}) <strong>x${hits}</strong></span>
-      <div>
-        ${en.isTime ? `<input type="number" placeholder="min" class="enemy-input" id="min-${en.id}">` : ''}
-        <button class="btn-small enemy-hit" data-id="${en.id}">+ Hit</button>
-      </div>
-    </div>`;
+function streakInfo() {
+  const t = todayKey();
+  let cur = 0, k = dayIsClear(t) ? t : addDays(t, -1);
+  while (dayIsClear(k)) { cur++; k = addDays(k, -1); }
+  let best = 0, run = 0, prev = null;
+  Object.keys(db.logs).filter(dayIsClear).sort().forEach(d => {
+    run = (prev && addDays(prev, 1) === d) ? run + 1 : 1;
+    prev = d; best = Math.max(best, run);
   });
-  document.getElementById('enemies-list').innerHTML = eHtml;
-
-  // Breakdown
-  let bHtml = `<p>Main XP: ${stats.rawMain} x ${stats.mult} multiplier</p>`;
-  if(stats.untouchable) bHtml += `<p style="color:var(--accent)">+ Untouchable Day: 30</p>`;
-  bHtml += `<hr><p>Net XP: <strong>${stats.net}</strong></p>`;
-  document.getElementById('breakdown-content').innerHTML = bHtml;
-
-  updateProgressTab();
+  return { cur, best };
 }
 
-function updateProgressTab() {
-  const stats = calcDayStats(currentDate);
-  document.getElementById('streak-stats').innerText = `Current Streak: ${stats.streak} | Multiplier: ${stats.mult}x`;
-  
-  // Heatmap
-  let hm = ''; let d = new Date(db.config.seasonStartDate); let end = new Date();
-  while(d <= end) {
-    let dStr = d.toISOString().split('T')[0];
-    let g = db.logs[dStr] ? calcDayStats(dStr).grade : 'F';
-    hm += `<div class="heat-box heat-${g}" title="${dStr}: ${g}"></div>`;
-    d.setDate(d.getDate()+1);
-  }
-  document.getElementById('heatmap-container').innerHTML = hm;
-
-  // This Week
-  let weekXP = 0; let clears = 0; let wHtml = '';
-  for(let i=6; i>=0; i--) {
-    let wD = new Date(currentDate); wD.setDate(wD.getDate() - wD.getDay() + 1 + i - 7); // Rough approx for week view
-    // A proper Mon-Sun iter:
-    let curr = new Date(currentDate); 
-    let dayIdx = curr.getDay() || 7; 
-    curr.setDate(curr.getDate() - dayIdx + 1 + (6-i));
-    let dStr = curr.toISOString().split('T')[0];
-    let dStats = calcDayStats(dStr);
-    weekXP += dStats.net;
-    if(dStats.isClear) clears++;
-    wHtml += `<div class="week-box heat-${dStats.grade}">${['M','T','W','T','F','S','S'][6-i]}</div>`;
-  }
-  document.getElementById('week-boxes').innerHTML = wHtml;
-  
-  // Weekly Systems
-  let wk = db.weekly[currentWeekStr];
-  document.getElementById('weekly-score').innerText = `Base XP: ${weekXP}`;
-  document.getElementById('boss-check').checked = wk.boss;
-  
-  ['win','enemy','rule'].forEach(k => document.getElementById(`review-${k}`).value = wk.review[k] || '');
-
-  // Attributes
-  let aHtml = '';
-  for(let k in db.attributes) {
-    let xp = db.attributes[k];
-    let lv = xp>=7000?5 : xp>=4500?4 : xp>=2500?3 : xp>=1000?2 : 1;
-    let title = ['Novice','Apprentice','Adept','Expert','Master'][lv-1];
-    aHtml += `<div class="flex-between"><small>${k} (Lv ${lv} ${title})</small><small>${xp} XP</small></div>
-              <div class="attr-bar"><div class="attr-fill" style="width:${(xp/(lv*2000))*100}%"></div></div>`;
-  }
-  document.getElementById('attributes-list').innerHTML = aHtml;
-
-  // Ranks
-  let seasonXP = 0; 
-  for(let l in db.logs) seasonXP += calcDayStats(l).net;
-  let currRank = db.config.ranks[0], currDiv = 1, nextXP = db.config.ranks[0].tiers[1];
-  for(let r of db.config.ranks) {
-    for(let i=0; i<3; i++) {
-      if(seasonXP >= r.tiers[i]) { currRank = r; currDiv = i+1; nextXP = r.tiers[i+1] || r.tiers[i]; }
-    }
-  }
-  let rankStr = `${currRank.name} ${['I','II','III'][currDiv-1]}`;
-  document.getElementById('header-rank').innerText = rankStr;
-  document.getElementById('rank-progress-text').innerText = `${rankStr} — ${seasonXP} / ${nextXP} XP`;
-  document.getElementById('rank-progress-fill').style.width = nextXP ? `${(seasonXP/nextXP)*100}%` : '100%';
-
-  // Achievements
-  let achHtml = '';
-  db.config.achievements.forEach(a => {
-    let unl = db.unlockedAch.includes(a.id);
-    achHtml += `<div class="ach-card ${unl?'unlocked':''}" onclick="toggleAch('${a.id}')">
-      <strong>${a.name}</strong><br><small>${a.xp} XP</small>
-    </div>`;
-  });
-  document.getElementById('achievements-list').innerHTML = achHtml;
-}
-
-window.toggleAch = function(id) {
-  if(db.unlockedAch.includes(id)) db.unlockedAch = db.unlockedAch.filter(i=>i!==id);
-  else { db.unlockedAch.push(id); celebrate('Achievement Unlocked!'); }
-  saveData(); updateProgressTab();
-}
-
-// Event Listeners
-document.addEventListener('change', e => {
-  if(e.target.classList.contains('q-check')) {
-    let id = e.target.getAttribute('data-id');
-    if(e.target.checked) {
-      let q = [...db.config.mainQuests, ...db.config.extras].find(x => x.id === id);
-      db.logs[currentDate].ticked[id] = q.xp;
-      
-      // Add attribute XP
+// Attribute XP is now derived from the logs. Before, it was added on tick but never removed on untick,
+// so ticking and unticking a quest could farm infinite attribute XP.
+function computeAttributes() {
+  const out = { CRAFT: 0, VOICE: 0, VITALITY: 0, SPIRIT: 0, FOCUS: 0 };
+  const all = [...db.config.mainQuests, ...db.config.extras];
+  for (const key in db.logs) {
+    for (const id in db.logs[key].ticked) {
+      const q = all.find(x => x.id === id); if (!q) continue;
       let attr = q.attr;
-      if(!attr && q.parent) {
-         let p = [...db.config.mainQuests, ...db.config.extras].find(x => x.id === q.parent);
-         if(p) attr = p.attr;
-      }
-      if(attr) db.attributes[attr] = (db.attributes[attr]||0) + q.xp;
-      
-      let s = calcDayStats(currentDate);
-      if(s.isClear && db.config.mainQuests.filter(mq=>!mq.parent).length === Object.keys(db.logs[currentDate].ticked).filter(k=>db.config.mainQuests.find(m=>m.id===k && !m.parent)).length) {
-        celebrate("Day Clear!"); // Only on the exact moment of clear
-      }
-    } else {
-      delete db.logs[currentDate].ticked[id];
-      // Untick children
-      let children = [...db.config.mainQuests, ...db.config.extras].filter(x => x.parent === id);
-      children.forEach(c => delete db.logs[currentDate].ticked[c.id]);
+      if (!attr && q.parent) { const p = all.find(x => x.id === q.parent); attr = p && p.attr; }
+      if (attr && attr in out) out[attr] += db.logs[key].ticked[id];
     }
-    saveData(); renderUI();
   }
-  if(e.target.id === 'boss-check') {
-    db.weekly[currentWeekStr].boss = e.target.checked;
-    if(e.target.checked) celebrate("Boss Defeated!");
-    saveData(); updateProgressTab();
-  }
-});
+  return out;
+}
 
-document.addEventListener('click', e => {
-  if(e.target.classList.contains('nav-btn')) {
-    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    e.target.classList.add('active');
-    document.getElementById(e.target.getAttribute('data-target')).classList.add('active');
-  }
-  if(e.target.classList.contains('enemy-hit')) {
-    let id = e.target.getAttribute('data-id');
-    let minInput = document.getElementById(`min-${id}`);
-    let min = minInput ? (parseInt(minInput.value) || 30) : 30;
-    db.logs[currentDate].enemies.push({ id, min });
-    if(minInput) minInput.value = '';
-    saveData(); renderUI();
-  }
-  if(e.target.id === 'prev-day') { let d = new Date(currentDate); d.setDate(d.getDate()-1); setDate(d); }
-  if(e.target.id === 'next-day') { let d = new Date(currentDate); d.setDate(d.getDate()+1); setDate(d); }
-  if(e.target.id === 'today-btn') { setDate(new Date()); }
-  if(e.target.id === 'save-review') {
-    db.weekly[currentWeekStr].review = {
-      win: document.getElementById('review-win').value,
-      enemy: document.getElementById('review-enemy').value,
-      rule: document.getElementById('review-rule').value
-    };
-    saveData(); celebrate("Weekly Review Saved!");
-  }
-});
+const reviewDone = wk => !!(wk && wk.review && ['win', 'enemy', 'rule'].some(k => (wk.review[k] || '').trim()));
+function bonusXP() {
+  let t = 0;
+  for (const w in db.weekly) { if (db.weekly[w].boss) t += BOSS_XP; if (reviewDone(db.weekly[w])) t += REVIEW_XP; }
+  db.unlockedAch.forEach(id => { const a = db.config.achievements.find(x => x.id === id); if (a) t += a.xp; });
+  return t;
+}
 
-document.getElementById('date-picker').addEventListener('change', e => {
-  if(e.target.value) setDate(new Date(e.target.value));
-});
+function ladder() {                  // flatten ranks into divisions, skipping the 999999 placeholders
+  const out = [];
+  db.config.ranks.forEach(r => {
+    const valid = r.tiers.filter(x => x < 999999);
+    valid.forEach((xp, i) => out.push({ rank: r.name, label: valid.length > 1 ? `${r.name} ${['I', 'II', 'III'][i]}` : r.name, xp }));
+  });
+  return out;
+}
 
-function setDate(d) {
-  currentDate = d.toISOString().split('T')[0];
-  currentWeekStr = getWeekStr(currentDate);
-  if(!db.logs[currentDate]) db.logs[currentDate] = { ticked: {}, enemies: [], review: {} };
-  if(!db.weekly[currentWeekStr]) db.weekly[currentWeekStr] = { bonuses: {}, boss: false, review: {} };
+function weeklyDoneOn(id, key) {     // another day this week where a once-a-week quest was already ticked
+  return weekDays(key).find(d => d !== key && db.logs[d] && db.logs[d].ticked[id]) || null;
+}
+
+// --- 5. FEEDBACK ---
+let toastTimer;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+}
+function celebrate(msg) {
+  if (msg) toast(msg);
+  if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const c = $('confetti-container'); c.innerHTML = '';
+  const cs = getComputedStyle(document.documentElement);
+  const colors = ['--g-s', '--g-a', '--g-b', '--g-c'].map(v => cs.getPropertyValue(v).trim() || '#ffc857');
+  for (let i = 0; i < 44; i++) {
+    const el = document.createElement('div'); el.className = 'confetti';
+    el.style.left = Math.random() * 100 + 'vw';
+    el.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+    el.style.animationDuration = (Math.random() * 2 + 1.2) + 's';
+    el.style.animationDelay = (Math.random() * .4) + 's';
+    c.appendChild(el);
+  }
+  setTimeout(() => { c.innerHTML = ''; }, 3800);
+}
+
+// --- 6. RENDER: TODAY ---
+function renderUI() {
+  const log = ensureDay(currentDate); ensureWeek(currentWeekStr);
+  const s = stats(currentDate);
+  db.attributes = computeAttributes();
+
+  $('date-picker').value = currentDate;
+  $('date-text').textContent = fromKey(currentDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  $('today-btn').hidden = currentDate === todayKey();
+
+  renderHUD(s, log);
+  renderQuests(s, log);
+  renderEnemies(log, s);
+  renderBreakdown(s);
+  renderProgress();
+}
+
+function renderHUD(s, log) {
+  const g = s.grade;
+  $('hud').style.setProperty('--g', `var(--g-${g.toLowerCase()})`);
+  $('day-grade').textContent = g;
+  $('day-net-xp').textContent = fmt(s.net);
+  const untouched = !Object.keys(log.ticked).length && !log.enemies.length;
+  $('day-message').textContent = untouched ? "Let's lock in." : MESSAGES[g];
+  $('grade-fill').style.width = Math.min(100, s.net / GRADE_MAX * 100) + '%';
+  document.querySelectorAll('.meter-marks span').forEach(sp => {
+    const thr = GRADES.find(x => x[0] === sp.dataset.g)[1];
+    sp.classList.toggle('hit', s.net >= thr);
+  });
+  $('base-xp').textContent = `Quest XP ${fmt(s.base)}`;
+  const next = GRADES.find(x => x[1] > s.net);
+  $('next-grade-hint').textContent = next ? `${fmt(next[1] - s.net)} XP to ${next[0]}` : 'Top grade reached';
+}
+
+const CHEVRON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+const folds = new Map();    // parent quest id -> true when its bonus objectives are folded (resets when you change day)
+
+function qRow(q, log, key, sectionLocked, kids, open) {
+  const done = !!log.ticked[q.id];
+  let locked = false, note = '';
+  if (q.weeklyOnce) {
+    const d = weeklyDoneOn(q.id, key);
+    if (d && !done) { locked = true; note = `done ${dayShort(d)}`; }
+  }
+  if (sectionLocked && !done) locked = true;      // already-ticked items can always be unticked
+  let tag = '';
+  if (note) tag = `<span class="q-tag">${esc(note)}</span>`;
+  else if (kids && kids.length) {
+    const n = kids.filter(k => log.ticked[k.id]).length;
+    tag = done
+      ? `<button type="button" class="q-tag q-fold" data-fold="${esc(q.id)}" aria-expanded="${open}" aria-label="Bonus objectives, ${n} of ${kids.length} done">${n}/${kids.length}${CHEVRON_SVG}</button>`
+      : `<span class="q-tag" title="Bonus objectives">${n}/${kids.length}</span>`;
+  } else if (q.weeklyOnce) tag = '<span class="q-tag">once a week</span>';
+  const cid = `chk-${esc(q.id)}`;
+  return `<div class="q ${done ? 'is-done' : ''} ${locked ? 'is-locked' : ''}"><div class="q-line">
+    <label class="q-main">
+      <input type="checkbox" class="q-check" id="${cid}" data-id="${esc(q.id)}" ${done ? 'checked' : ''} ${locked ? 'disabled' : ''}>
+      <span class="box" aria-hidden="true"></span>
+      <span class="q-name">${esc(q.name)}</span>
+    </label>${tag}
+    <label class="q-xp" for="${cid}">+${q.xp}</label>
+  </div></div>`;
+}
+
+// Bonus objectives (sub-quests) only appear once their parent quest is ticked, and the parent can fold them away.
+function questRows(tops, all, log, key, sectionLocked) {
+  return tops.map(q => {
+    const kids = all.filter(k => k.parent === q.id);
+    const open = !!(log.ticked[q.id] && kids.length && !folds.get(q.id));
+    let subs = '';
+    if (open) subs = `<ul class="subs">${kids.map(k => `<li class="q-wrap">${qRow(k, log, key, sectionLocked, null, false)}</li>`).join('')}</ul>`;
+    return `<li class="q-wrap">${qRow(q, log, key, sectionLocked, kids, open)}${subs}</li>`;
+  }).join('');
+}
+
+function renderQuests(s, log) {
+  const mq = db.config.mainQuests;
+  const req = mainsFor(currentDate);
+  $('main-count').textContent = `${req.filter(q => log.ticked[q.id]).length}/${req.length}`;
+  $('main-quests-list').innerHTML = questRows(mq.filter(q => !q.parent), mq, log, currentDate, false);
+  renderTier(1, T1_REQ, s, log);
+  renderTier(2, t2Req(currentDate), s, log);
+}
+
+function renderTier(n, req, s, log) {
+  const all = db.config.extras;
+  const tops = all.filter(q => !q.parent && q.tier === n);
+  const unlocked = s.base >= req;
+  const anyTicked = all.some(q => log.ticked[q.id] && tierOf(q) === n);
+
+  const status = $(`t${n}-status`);
+  status.className = 'badge' + (unlocked ? ' on' : '');
+  status.innerHTML = unlocked ? 'Unlocked' : `${LOCK_SVG}${req} XP`;
+
+  const lock = $(`t${n}-lock`);
+  lock.hidden = unlocked;
+  if (!unlocked) {
+    lock.innerHTML = `<div class="lock-row"><span>${fmt(req - s.base)} more quest XP to unlock</span><span>${fmt(s.base)} / ${req}</span></div>
+      <div class="mini-meter"><i style="width:${Math.min(100, s.base / req * 100)}%"></i></div>`;
+  }
+  const list = $(`t${n}-list`);
+  const show = unlocked || anyTicked;       // if XP dropped below the line, keep ticked items visible so they can be undone
+  list.hidden = !show;
+  list.innerHTML = show ? questRows(tops, all, log, currentDate, !unlocked) : '';
+}
+
+function enemyPenalty(en, entry) {
+  if (!entry) return en.xp;
+  return en.isTime ? Math.round(en.xp * ((entry.min != null ? entry.min : 30) / 30)) : en.xp * (entry.n || 1);
+}
+
+function renderEnemies(log, s) {
+  $('enemies-list').innerHTML = db.config.enemies.map(en => {
+    const entry = log.enemies.find(e => e.id === en.id);
+    const on = !!entry;
+    const min = entry && entry.min != null ? entry.min : 30;
+    const extra = on && !en.isTime && entry.n > 1 ? ` x${entry.n}` : '';
+    const pen = enemyPenalty(en, entry);
+    const unit = !on && en.isTime ? '<small>/30m</small>' : '';
+    const stepper = on && en.isTime ? `<div class="stepper">
+        <button class="step" data-id="${esc(en.id)}" data-d="-15" aria-label="15 minutes less">&minus;</button>
+        <input class="e-min" type="number" inputmode="numeric" min="5" max="720" step="5" value="${min}" data-id="${esc(en.id)}" aria-label="Minutes lost">
+        <span class="e-unit">min</span>
+        <button class="step" data-id="${esc(en.id)}" data-d="15" aria-label="15 minutes more">+</button>
+      </div>` : '';
+    return `<li class="q-wrap"><div class="q enemy ${on ? 'is-hit' : ''}">
+      <div class="q-line">
+        <label class="q-main">
+          <input type="checkbox" class="q-check e-check" id="chk-${esc(en.id)}" data-id="${esc(en.id)}" ${on ? 'checked' : ''}>
+          <span class="box" aria-hidden="true"></span>
+          <span class="q-name">${esc(en.name)}${extra}</span>
+        </label>
+        <label class="q-xp" for="chk-${esc(en.id)}">&minus;${pen}${unit}</label>
+      </div>${stepper}</div></li>`;
+  }).join('');
+  const tot = $('enemy-total');
+  tot.textContent = s.penalty ? `\u2212${fmt(s.penalty)} XP` : 'None today';
+  tot.classList.toggle('has', s.penalty > 0);
+}
+
+function renderBreakdown(s) {
+  const row = (l, v, cls = '') => `<div class="bd-row ${cls}"><span>${l}</span><b>${v}</b></div>`;
+  let h = row('Main quests', `+${fmt(s.rawMain)}`);
+  if (s.mainBonus > 0) h += row(`Streak bonus x${s.mult}`, `+${fmt(s.mainBonus)}`, 'pos');
+  if (s.rawSub) h += row('Bonus objectives', `+${fmt(s.rawSub)}`);
+  if (s.rawExtra) h += row('Extras', `+${fmt(s.rawExtra)}`);
+  if (s.untouchable) h += row('Untouchable day', '+30', 'pos');
+  if (s.penalty) h += row('Enemies', `\u2212${fmt(s.penalty)}`, 'neg');
+  h += row('Net XP today', fmt(s.net), 'total');
+  $('breakdown-content').innerHTML = h;
+}
+
+// --- 7. RENDER: PROGRESS ---
+function renderProgress() {
+  const si = streakInfo(), todayMult = stats(todayKey()).mult;
+  $('streak-cur').textContent = si.cur;
+  $('streak-best').textContent = si.best;
+  $('streak-mult').textContent = 'x' + todayMult;
+  renderHeatmap();
+  renderWeek();
+  renderAttributes();
+  renderRank();
+  renderAchievements();
+}
+
+function renderHeatmap() {
+  const today = todayKey();
+  let first = db.config.seasonStartDate;
+  if (!isKey(first) || first > today) first = today;
+  const cap364 = addDays(today, -364); if (first < cap364) first = cap364;
+  let html = '<span class="heat-box h-pad"></span>'.repeat((fromKey(first).getDay() + 6) % 7);
+  for (let k = first; k <= today; k = addDays(k, 1)) {
+    const g = db.logs[k] ? stats(k).grade : 'F';
+    html += `<span class="heat-box h-${g}" title="${k}: ${g}"></span>`;
+  }
+  const c = $('heatmap-container'); c.innerHTML = html; c.scrollLeft = c.scrollWidth;
+}
+
+function renderWeek() {
+  const today = todayKey(); let total = 0;
+  $('week-boxes').innerHTML = weekDays(currentDate).map((k, i) => {
+    const st = stats(k), log = db.logs[k];
+    total += st.net;
+    const has = log && (Object.keys(log.ticked).length || log.enemies.length);
+    const g = has ? st.grade : null;
+    return `<button class="wd ${k === currentDate ? 'is-sel' : ''} ${k === today ? 'is-today' : ''}" data-date="${k}" style="--g:${g ? `var(--g-${g.toLowerCase()})` : 'var(--faint)'}" aria-label="${dayShort(k)} ${k}">
+      <small>${'MTWTFSS'[i]}</small><b>${g || '\u2013'}</b></button>`;
+  }).join('');
+  $('week-xp').textContent = `${fmt(total)} XP`;
+
+  const wk = ensureWeek(currentWeekStr);
+  $('boss-check').checked = !!wk.boss;
+  if (reviewLoadedFor !== currentWeekStr) {          // don't overwrite text the person is still typing
+    ['win', 'enemy', 'rule'].forEach(k => { $(`review-${k}`).value = wk.review[k] || ''; });
+    reviewLoadedFor = currentWeekStr;
+  }
+}
+
+function renderAttributes() {
+  $('attributes-list').innerHTML = Object.keys(db.attributes).map(k => {
+    const xp = db.attributes[k];
+    let lv = 1; ATTR_LEVELS.forEach((t, i) => { if (xp >= t) lv = i + 1; });
+    const lo = ATTR_LEVELS[lv - 1], hi = ATTR_LEVELS[lv];
+    const pct = hi ? (xp - lo) / (hi - lo) * 100 : 100;
+    return `<div class="attr">
+      <div class="attr-top"><span class="attr-name">${cap(k)}</span><span class="attr-lv">Lv ${lv} ${ATTR_TITLES[lv - 1]}</span><span class="attr-xp">${fmt(xp)}${hi ? ' / ' + fmt(hi) : ''} XP</span></div>
+      <div class="bar"><i style="width:${pct}%"></i></div></div>`;
+  }).join('');
+}
+
+function renderRank() {
+  const lad = ladder();
+  let daily = 0; for (const k in db.logs) daily += stats(k).net;
+  const bonus = COUNT_BONUS_IN_SEASON ? bonusXP() : 0;
+  const total = daily + bonus;
+  let idx = 0; lad.forEach((r, i) => { if (total >= r.xp) idx = i; });
+  const cur = lad[idx], next = lad[idx + 1];
+
+  $('header-rank').textContent = cur.label;
+  $('rank-name').textContent = cur.label;
+  $('season-xp').textContent = `${fmt(total)} XP`;
+  $('rank-progress-fill').style.width = (next ? (total - cur.xp) / (next.xp - cur.xp) * 100 : 100) + '%';
+  $('rank-progress-text').textContent = next ? `${fmt(next.xp - total)} XP to ${next.label}` : 'Highest rank reached';
+  $('rank-source').textContent = bonus ? `${fmt(daily)} from days, ${fmt(bonus)} from boss, reviews and achievements.` : '';
+
+  const ranks = db.config.ranks;
+  $('rank-segs').innerHTML = ranks.map((r, i) => {
+    const start = r.tiers[0], end = ranks[i + 1] ? ranks[i + 1].tiers[0] : null;
+    const isNow = r.name === cur.rank;
+    const pct = end ? Math.max(0, Math.min(1, (total - start) / (end - start))) * 100 : (total >= start ? 100 : 0);
+    return `<div class="${isNow ? 'now' : (pct >= 100 ? 'done' : '')}" title="${esc(r.name)}"><i style="width:${pct}%"></i></div>`;
+  }).join('');
+}
+
+function renderAchievements() {
+  const list = db.config.achievements;
+  $('ach-count').textContent = `${db.unlockedAch.filter(id => list.some(a => a.id === id)).length}/${list.length}`;
+  $('achievements-list').innerHTML = list.map(a => {
+    const on = db.unlockedAch.includes(a.id);
+    return `<button class="ach ${on ? 'on' : ''}" data-id="${esc(a.id)}" aria-pressed="${on}"><b>${esc(a.name)}</b><small>+${a.xp} XP</small></button>`;
+  }).join('');
+}
+
+// --- 8. EVENTS ---
+function snapshot() {
+  const s = stats(currentDate);
+  return { clear: s.isClear, t1: s.base >= T1_REQ, t2: s.base >= t2Req(currentDate) };
+}
+
+function onQuestToggle(el) {
+  const all = [...db.config.mainQuests, ...db.config.extras];
+  const q = all.find(x => x.id === el.dataset.id);
+  if (!q) { renderUI(); return; }
+  const log = ensureDay(currentDate);
+  const before = snapshot();
+  if (el.checked) { log.ticked[q.id] = q.xp; folds.delete(q.id); }
+  else { delete log.ticked[q.id]; all.filter(x => x.parent === q.id).forEach(c => delete log.ticked[c.id]); }
+  saveData();
+  const after = snapshot();
+  renderUI();
+  if (!before.t1 && after.t1) toast('Extras tier 1 unlocked');
+  if (!before.t2 && after.t2) toast('Extras tier 2 unlocked');
+  if (!before.clear && after.clear) celebrate('Day clear');
+}
+
+function onEnemyToggle(el) {
+  const en = db.config.enemies.find(x => x.id === el.dataset.id);
+  if (!en) { renderUI(); return; }
+  const log = ensureDay(currentDate);
+  log.enemies = log.enemies.filter(e => e.id !== en.id);
+  if (el.checked) log.enemies.push(en.isTime ? { id: en.id, min: 30 } : { id: en.id, n: 1 });
+  saveData(); renderUI();
+}
+
+function setEnemyMinutes(id, minutes) {
+  const log = ensureDay(currentDate);
+  const e = log.enemies.find(x => x.id === id); if (!e) return;
+  e.min = Math.max(5, Math.min(720, Math.round(minutes) || 30));
+  saveData(); renderUI();
+}
+
+function switchTab(id) {
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.target === id));
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.id === id));
+  window.scrollTo(0, 0);
+}
+
+function setDate(key) {
+  if (!isKey(key)) return;
+  currentDate = key;
+  folds.clear();
+  currentWeekStr = getWeekStr(key);
+  ensureDay(key); ensureWeek(currentWeekStr);
   renderUI();
 }
 
-// Data & Export
-document.getElementById('btn-export').addEventListener('click', () => {
-  let dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db));
-  let dl = document.createElement('a'); dl.setAttribute("href", dataStr);
-  dl.setAttribute("download", `habit-gamified-backup-${new Date().toISOString().split('T')[0]}.json`);
-  dl.click();
-  document.getElementById('last-backup').innerText = `Last export: Just now`;
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (t.classList.contains('e-check')) return onEnemyToggle(t);
+  if (t.classList.contains('q-check') && t.id !== 'boss-check') return onQuestToggle(t);
+  if (t.classList.contains('e-min')) return setEnemyMinutes(t.dataset.id, parseInt(t.value, 10));
+  if (t.id === 'boss-check') {
+    ensureWeek(currentWeekStr).boss = t.checked;
+    saveData(); renderUI();
+    if (t.checked) celebrate(`Boss defeated, +${BOSS_XP} XP`);
+    return;
+  }
+  if (t.id === 'date-picker') { if (t.value) setDate(t.value); return; }
+  if (t.dataset && t.dataset.f && t.closest('.er')) return onEditField(t);
 });
 
-document.getElementById('btn-import').addEventListener('change', e => {
-  let file = e.target.files[0];
-  if(!file) return;
-  let reader = new FileReader();
-  reader.onload = (ev) => {
+document.addEventListener('click', e => {
+  const t = e.target;
+  const nav = t.closest('.nav-btn'); if (nav) return switchTab(nav.dataset.target);
+  const fold = t.closest('.q-fold');
+  if (fold) { folds.set(fold.dataset.fold, !folds.get(fold.dataset.fold)); return renderUI(); }
+  const step = t.closest('.step');
+  if (step) {
+    const entry = ensureDay(currentDate).enemies.find(x => x.id === step.dataset.id);
+    if (entry) setEnemyMinutes(step.dataset.id, (entry.min != null ? entry.min : 30) + parseInt(step.dataset.d, 10));
+    return;
+  }
+  if (t.closest('#prev-day')) return setDate(addDays(currentDate, -1));
+  if (t.closest('#next-day')) return setDate(addDays(currentDate, 1));
+  if (t.closest('#today-btn')) return setDate(todayKey());
+  const wd = t.closest('.wd'); if (wd) return setDate(wd.dataset.date);
+  const ach = t.closest('.ach');
+  if (ach) {
+    const id = ach.dataset.id;
+    if (db.unlockedAch.includes(id)) db.unlockedAch = db.unlockedAch.filter(i => i !== id);
+    else { db.unlockedAch.push(id); celebrate('Achievement unlocked'); }
+    saveData(); renderUI(); return;
+  }
+  if (t.closest('#save-review')) {
+    const wk = ensureWeek(currentWeekStr);
+    wk.review = { win: $('review-win').value, enemy: $('review-enemy').value, rule: $('review-rule').value };
+    saveData(); renderUI();
+    if (reviewDone(wk)) celebrate(`Review saved, +${REVIEW_XP} XP`); else toast('Review cleared');
+    return;
+  }
+  const seg = t.closest('.seg-btn'); if (seg) return setEditCat(seg.dataset.cat);
+  const actBtn = t.closest('[data-act]'); if (actBtn && actBtn.closest('.er')) return onEditAction(actBtn);
+});
+
+$('date-picker').addEventListener('click', () => { try { $('date-picker').showPicker(); } catch (e) { /* not supported, native control handles it */ } });
+
+// --- 9. EDIT TAB ---
+const EDIT_CATS = {
+  mainQuests: { arr: 'mainQuests', noun: 'quest' },
+  tier1: { arr: 'extras', tier: 1, noun: 'quest' },
+  tier2: { arr: 'extras', tier: 2, noun: 'quest' },
+  enemies: { arr: 'enemies', noun: 'enemy' }
+};
+
+function setEditCat(cat) {
+  editCat = cat;
+  document.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b.dataset.cat === cat));
+  $('btn-add-item').textContent = `Add ${EDIT_CATS[cat].noun}`;
+  renderEditList();
+}
+
+function editItems() {
+  const c = EDIT_CATS[editCat], arr = db.config[c.arr];
+  return c.tier ? arr.filter(it => tierOf(it) === c.tier) : arr;
+}
+
+function renderEditList() {
+  const isEnemy = editCat === 'enemies';
+  const items = editItems();
+  $('edit-list-container').innerHTML = items.length ? items.map(it => {
+    const sub = !!it.parent;
+    const attrSel = (!sub && !isEnemy) ? `<select data-f="attr" aria-label="Attribute"><option value="">No attribute</option>${ATTRS.map(a => `<option value="${a}" ${it.attr === a ? 'selected' : ''}>${cap(a)}</option>`).join('')}</select>` : '';
+    const timed = isEnemy ? `<label class="er-timed"><input type="checkbox" data-f="isTime" ${it.isTime ? 'checked' : ''}> per 30 min</label>` : '';
+    const addSub = (!sub && !isEnemy) ? '<button class="mini" data-act="add-sub" title="Add bonus objective" aria-label="Add bonus objective">+</button>' : '';
+    return `<li class="er ${sub ? 'is-sub' : ''}" data-id="${esc(it.id)}">
+      <input type="text" data-f="name" value="${esc(it.name)}" aria-label="Name" autocomplete="off">
+      <div class="er-line">
+        <input class="er-xp" type="number" inputmode="numeric" min="0" data-f="xp" value="${it.xp}" aria-label="XP" title="XP">
+        ${attrSel}${timed}
+        <span class="er-actions">${addSub}<button class="mini" data-act="up" aria-label="Move up">&uarr;</button><button class="mini" data-act="down" aria-label="Move down">&darr;</button><button class="mini danger" data-act="del" aria-label="Delete">&times;</button></span>
+      </div></li>`;
+  }).join('') : '<li class="hint">Nothing here yet.</li>';
+}
+
+function findEditItem(el) {
+  const row = el.closest('.er'); if (!row) return null;
+  const arr = db.config[EDIT_CATS[editCat].arr];
+  return { arr, item: arr.find(x => x.id === row.dataset.id) };
+}
+
+function onEditField(el) {
+  const f = findEditItem(el); if (!f || !f.item) return;
+  const k = el.dataset.f;
+  if (k === 'xp') { const n = parseInt(el.value, 10); f.item.xp = isNaN(n) || n < 0 ? 0 : n; el.value = f.item.xp; }
+  else if (k === 'name') { f.item.name = el.value.trim() || f.item.name; el.value = f.item.name; }
+  else if (k === 'attr') { if (el.value) f.item.attr = el.value; else delete f.item.attr; }
+  else if (k === 'isTime') f.item.isTime = el.checked;
+  saveData(); renderUI();
+}
+
+// A top-level quest moves together with its bonus objectives, and only past siblings in its own group/tier.
+function moveItem(arr, id, dir) {
+  const i = arr.findIndex(x => x.id === id); if (i < 0) return;
+  const it = arr[i];
+  const same = x => x.parent === it.parent && x.tier === it.tier;
+  const span = idx => { let e = idx + 1; if (!arr[idx].parent) while (e < arr.length && arr[e].parent === arr[idx].id) e++; return [idx, e]; };
+  const [s, e] = span(i);
+  if (dir < 0) {
+    let k = i - 1; while (k >= 0 && !same(arr[k])) k--;
+    if (k < 0) return;
+    const block = arr.splice(s, e - s); arr.splice(k, 0, ...block);
+  } else {
+    let k = e; while (k < arr.length && !same(arr[k])) k++;
+    if (k >= arr.length) return;
+    const ke = span(k)[1];
+    const block = arr.splice(s, e - s); arr.splice(ke - block.length, 0, ...block);
+  }
+}
+
+function onEditAction(btn) {
+  const f = findEditItem(btn); if (!f || !f.item) return;
+  const { arr, item } = f, act = btn.dataset.act;
+  if (act === 'up' || act === 'down') moveItem(arr, item.id, act === 'up' ? -1 : 1);
+  else if (act === 'del') {
+    const kids = arr.filter(x => x.parent === item.id);
+    if (!confirm(`Delete "${item.name}"${kids.length ? ` and its ${kids.length} bonus objectives` : ''}? Past logs keep their XP.`)) return;
+    const gone = new Set([item.id, ...kids.map(k => k.id)]);
+    db.config[EDIT_CATS[editCat].arr] = arr.filter(x => !gone.has(x.id));
+  } else if (act === 'add-sub') {
+    const sub = { id: newId(), parent: item.id, name: 'New bonus', xp: 10 };
+    let at = arr.indexOf(item) + 1; while (at < arr.length && arr[at].parent === item.id) at++;
+    arr.splice(at, 0, sub);
+    saveData(); renderEditList(); renderUI(); focusEditRow(sub.id); return;
+  }
+  saveData(); renderEditList(); renderUI();
+}
+
+function focusEditRow(id) {
+  const input = document.querySelector(`.er[data-id="${id}"] input[data-f="name"]`);
+  if (input) { input.focus(); input.select(); }
+}
+
+$('btn-add-item').addEventListener('click', () => {
+  const c = EDIT_CATS[editCat];
+  let item;
+  if (editCat === 'enemies') item = { id: newId(), name: 'New enemy', xp: 20, isTime: false };
+  else {
+    item = { id: newId(), name: 'New quest', xp: 10 };
+    if (c.tier) item.tier = c.tier;
+    if (editCat === 'mainQuests') item.from = todayKey();   // only required from today on, so past streaks stay intact
+  }
+  db.config[c.arr].push(item);
+  saveData(); renderEditList(); renderUI(); focusEditRow(item.id);
+});
+
+$('btn-reset-defaults').addEventListener('click', () => {
+  if (!confirm('Reset all quests, enemies and ranks to the default rules? Your logged history will not be deleted.')) return;
+  db.config = clone(defaultConfig);
+  saveData(); renderUI(); renderEditList(); toast('Default rules restored');
+});
+
+// --- 10. BACKUP ---
+function renderBackupInfo() {
+  $('last-backup').textContent = 'Last backup: ' + (db.lastExport
+    ? new Date(db.lastExport).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    : 'never');
+}
+
+$('btn-export').addEventListener('click', () => {
+  db.lastExport = Date.now(); saveData();
+  const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `habit-gamified-backup-${todayKey()}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  renderBackupInfo(); toast('Backup exported');
+});
+
+let pendingImport = null;
+$('btn-import').addEventListener('change', e => {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
     try {
-      let imported = JSON.parse(ev.target.result);
-      if(confirm("Merge logs (keep newest) or Replace all?\nOK = Merge, Cancel = Replace")) {
-        Object.assign(db.logs, imported.logs); // Simple merge
-      } else {
-        db = imported;
-      }
-      saveData(); setDate(new Date()); alert("Import successful!");
-    } catch(err) { alert("Invalid backup file."); }
+      const parsed = JSON.parse(ev.target.result);
+      if (!parsed || typeof parsed !== 'object' || !parsed.logs || typeof parsed.logs !== 'object') throw new Error('shape');
+      pendingImport = normalize(parsed);
+      const dlg = $('import-dialog'); dlg.returnValue = '';
+      if (dlg.showModal) dlg.showModal();
+      else applyImport(confirm('Merge with current data? OK = Merge, Cancel = Replace all') ? 'merge' : 'replace');
+    } catch (err) { toast('That file is not a valid backup.'); }
+    e.target.value = '';
   };
   reader.readAsText(file);
 });
+$('import-dialog').addEventListener('close', () => applyImport($('import-dialog').returnValue));
 
-// Edit Mode Logic (Simple list rendering)
-document.getElementById('edit-category').addEventListener('change', renderEditList);
-function renderEditList() {
-  let cat = document.getElementById('edit-category').value;
-  let items = db.config[cat];
-  let html = items.map((it, idx) => `
-    <div class="edit-row">
-      <input type="text" value="${it.name}" onchange="updateConfig('${cat}',${idx},'name',this.value)" style="flex:1" class="input-full" style="margin:0;">
-      <input type="number" value="${it.xp}" onchange="updateConfig('${cat}',${idx},'xp',this.value)" style="width:60px" class="input-full" style="margin:0;">
-      <button class="btn-small" onclick="moveConfig('${cat}',${idx},-1)">↑</button>
-      <button class="btn-small" onclick="moveConfig('${cat}',${idx},1)">↓</button>
-    </div>
-  `).join('');
-  document.getElementById('edit-list-container').innerHTML = html;
-}
-window.updateConfig = function(cat, idx, field, val) {
-  db.config[cat][idx][field] = field==='xp'?parseInt(val):val; saveData(); renderUI();
-}
-window.moveConfig = function(cat, idx, dir) {
-  let arr = db.config[cat];
-  if(idx+dir < 0 || idx+dir >= arr.length) return;
-  let temp = arr[idx]; arr[idx] = arr[idx+dir]; arr[idx+dir] = temp;
-  saveData(); renderEditList(); renderUI();
-}
-document.getElementById('btn-reset-defaults').addEventListener('click', () => {
-  if(confirm("Reset all quests and rules to exact document defaults? Your logged history will NOT be deleted.")) {
-    db.config = JSON.parse(JSON.stringify(defaultConfig));
-    saveData(); renderUI(); renderEditList();
+const logWeight = l => Object.keys(l.ticked).length + l.enemies.length;
+function applyImport(mode) {
+  if (!pendingImport || (mode !== 'merge' && mode !== 'replace')) { pendingImport = null; return; }
+  const inc = pendingImport; pendingImport = null;
+  if (mode === 'replace') db = inc;
+  else {
+    for (const k in inc.logs) if (!db.logs[k] || logWeight(inc.logs[k]) > logWeight(db.logs[k])) db.logs[k] = inc.logs[k];
+    for (const w in inc.weekly) {
+      const a = db.weekly[w], b = inc.weekly[w];
+      if (!a) db.weekly[w] = b;
+      else { a.boss = a.boss || b.boss; if (!reviewDone(a) && reviewDone(b)) a.review = b.review; }
+    }
+    inc.unlockedAch.forEach(id => { if (!db.unlockedAch.includes(id)) db.unlockedAch.push(id); });
   }
-});
-document.getElementById('btn-add-item').addEventListener('click', () => alert("To add new complex items, please edit the JSON via export/import for now to ensure IDs match up properly."));
+  reviewLoadedFor = null;
+  saveData(); setDate(todayKey()); renderEditList(); renderBackupInfo();
+  toast(mode === 'replace' ? 'Backup restored' : 'Backup merged');
+}
 
-// Boot
-renderUI(); renderEditList();
+// --- 11. BOOT ---
+let bootToday = todayKey();
+document.addEventListener('visibilitychange', () => {   // app left open past midnight: roll over to the new day
+  if (document.visibilityState !== 'visible' || todayKey() === bootToday) return;
+  const wasOnToday = currentDate === bootToday;
+  bootToday = todayKey();
+  if (wasOnToday) setDate(bootToday); else renderUI();
+});
+
+setEditCat('mainQuests');
+renderUI();
+renderBackupInfo();
