@@ -31,7 +31,7 @@
         </button>
         <button id="today-btn" class="chip" hidden>Back to today</button>
       </div>
-      <div class="rank-chip" id="header-rank">Iron I</div>
+      <button class="rank-chip" id="header-rank" aria-label="Open Profile">Iron I</button>
     </div>
   </header>
 
@@ -71,7 +71,7 @@
         <ul class="list" id="main-quests-list"></ul>
       </section>
 
-      <!-- OPTIONAL EXTRAS (Unlocked Everyday) -->
+      <!-- OPTIONAL EXTRAS -->
       <section class="block">
         <header class="block-head"><h2>Optional extras</h2><span class="badge on">Always unlocked</span></header>
         <ul class="list" id="opt-list"></ul>
@@ -155,6 +155,7 @@
 
       <section class="block">
         <header class="block-head"><h2>Achievements</h2><span class="count" id="ach-count">0/0</span></header>
+        <p class="hint">Achievements unlock automatically as you log your days.</p>
         <div class="ach-grid" id="achievements-list"></div>
       </section>
     </section>
@@ -162,6 +163,17 @@
     <!-- EDIT -->
     <section id="tab-edit" class="tab">
       <section class="block first">
+        <header class="block-head"><h2>Settings</h2></header>
+        <div class="er-line" style="margin-bottom:10px;">
+          <input type="text" id="setting-name" class="field" placeholder="Player Name">
+        </div>
+        <div class="er-line">
+          <input type="text" id="setting-pin" class="field" inputmode="numeric" maxlength="3" placeholder="3-Digit PIN (Default: 000)">
+          <button id="btn-save-settings" class="btn">Save</button>
+        </div>
+      </section>
+
+      <section class="block">
         <header class="block-head"><h2>Rules</h2></header>
         <div class="seg" id="edit-tabs" role="tablist">
           <button class="seg-btn active" data-cat="mainQuests">Main</button>
@@ -200,6 +212,38 @@
     <button class="nav-btn" data-target="tab-progress">Progress</button>
     <button class="nav-btn" data-target="tab-edit">Edit</button>
   </nav>
+
+  <!-- PROFILE MODAL -->
+  <dialog id="profile-dialog">
+    <form method="dialog">
+      <div class="prof-head">
+        <div class="prof-ava" id="prof-ava">P</div>
+        <div>
+          <h2 id="prof-name">Player</h2>
+          <div class="rank-chip" id="prof-rank">Iron I</div>
+        </div>
+      </div>
+      <div class="prof-stats">
+        <div><b id="prof-xp">0</b><small>Season XP</small></div>
+        <div><b id="prof-clears">0</b><small>Day Clears</small></div>
+      </div>
+      <div class="prof-insights">
+        <div class="insight pos"><b>Strongest Area</b><span id="prof-strong">None</span></div>
+        <div class="insight neg"><b>Focus Needed</b><span id="prof-weak">None</span></div>
+      </div>
+      <div class="dlg-actions" style="margin-top:24px;">
+        <button class="btn btn-block">Close Profile</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- DAILY PIN MODAL -->
+  <dialog id="pin-dialog" class="pin-modal">
+    <h3>Daily Unlock</h3>
+    <p class="hint">Enter your 3-digit PIN to access today's dashboard.</p>
+    <input type="password" id="pin-input" class="pin-display" inputmode="numeric" pattern="[0-9]*" maxlength="3">
+    <button id="btn-unlock" class="btn btn-block">Unlock Dashboard</button>
+  </dialog>
 
   <dialog id="import-dialog">
     <form method="dialog">
