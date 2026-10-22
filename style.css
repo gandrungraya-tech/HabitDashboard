@@ -1,0 +1,86 @@
+:root {
+  --bg: #121212; --card-bg: #1e1e1e; --text: #e0e0e0; --text-muted: #888;
+  --accent: #4caf50; --accent-hover: #45a049; --danger: #f44336;
+  --s-color: #ffd700; --a-color: #03a9f4; --b-color: #4caf50; --c-color: #ff9800; --d-color: #9e9e9e; --f-color: #424242;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f5f5f5; --card-bg: #ffffff; --text: #222; --text-muted: #666;
+    --f-color: #e0e0e0;
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+body { background: var(--bg); color: var(--text); padding-bottom: 70px; }
+.top-bar { display: flex; justify-content: space-between; align-items: center; padding: 15px; background: var(--card-bg); border-bottom: 1px solid #333; position: sticky; top: 0; z-index: 100; }
+.logo { font-weight: bold; font-size: 1.1em; color: var(--accent); }
+.date-selector { display: flex; align-items: center; gap: 5px; }
+.date-selector input, .date-selector button { background: var(--bg); color: var(--text); border: 1px solid #444; border-radius: 4px; padding: 5px; }
+.rank-badge { font-size: 0.9em; font-weight: 600; background: rgba(76, 175, 80, 0.2); padding: 4px 8px; border-radius: 12px; color: var(--accent); }
+
+.app-container { max-width: 900px; margin: 0 auto; padding: 15px; display: grid; gap: 15px; }
+@media (min-width: 768px) { 
+  .app-container { grid-template-columns: 1fr 1fr; align-items: start; } 
+  .bottom-nav { display: none !important; }
+  .tab-content { display: block !important; } 
+}
+
+.card { background: var(--card-bg); padding: 20px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.card h3 { margin-bottom: 15px; font-size: 1.2em; border-bottom: 1px solid #333; padding-bottom: 5px; }
+.flex-between { display: flex; justify-content: space-between; align-items: center; }
+
+.day-header { display: flex; gap: 20px; align-items: center; margin-bottom: 15px; }
+#day-grade { font-size: 3em; line-height: 1; }
+#day-net-xp { color: var(--accent); }
+.progress-track { height: 10px; background: #333; border-radius: 5px; position: relative; margin: 10px 0; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s; }
+.marker { position: absolute; top: 0; height: 100%; width: 2px; background: white; opacity: 0.5; }
+
+.quest-list { display: flex; flex-direction: column; gap: 10px; }
+.quest-item { display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg); border-radius: 8px; cursor: pointer; }
+.quest-item.sub-quest { margin-left: 30px; border-left: 2px solid #444; border-radius: 0 8px 8px 0; }
+.quest-item input[type="checkbox"] { display: none; }
+.custom-check { width: 24px; height: 24px; border: 2px solid var(--text-muted); border-radius: 6px; display: inline-block; position: relative; transition: 0.2s; }
+.quest-item input:checked + .custom-check { background: var(--accent); border-color: var(--accent); }
+.quest-item input:checked + .custom-check::after { content: '✔'; color: white; position: absolute; top: 0; left: 4px; font-size: 16px; }
+.quest-meta { margin-left: auto; color: var(--text-muted); font-size: 0.9em; }
+
+.locked-section { opacity: 0.4; pointer-events: none; filter: grayscale(100%); }
+.lock-banner { background: #333; padding: 8px; text-align: center; border-radius: 4px; margin-bottom: 10px; font-size: 0.9em; }
+
+.enemies-card { border-left: 4px solid var(--danger); }
+.enemy-item { display: flex; justify-content: space-between; background: var(--bg); padding: 10px; border-radius: 8px; margin-bottom: 10px; align-items: center;}
+.enemy-input { width: 60px; padding: 5px; background: var(--card-bg); border: 1px solid #444; color: var(--text); border-radius: 4px; margin-right: 10px; }
+
+.btn { background: var(--accent); color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; }
+.btn-small { background: #333; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.9em;}
+.btn-outline { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
+.btn-danger { background: var(--danger); }
+.input-full { width: 100%; padding: 10px; margin-bottom: 10px; background: var(--bg); border: 1px solid #444; color: var(--text); border-radius: 8px; }
+
+.heatmap { display: grid; grid-template-rows: repeat(7, 15px); grid-auto-flow: column; gap: 3px; overflow-x: auto; padding-bottom: 10px; margin-top: 15px; }
+.heat-box { width: 15px; height: 15px; background: var(--f-color); border-radius: 2px; }
+.heat-S { background: var(--s-color); } .heat-A { background: var(--a-color); }
+.heat-B { background: var(--b-color); } .heat-C { background: var(--c-color); } .heat-D { background: var(--d-color); }
+
+.week-boxes { display: flex; gap: 5px; margin-top: 10px; }
+.week-box { flex: 1; text-align: center; padding: 10px 0; background: #333; border-radius: 6px; font-weight: bold; }
+
+.attr-bar { background: #333; height: 12px; border-radius: 6px; margin: 5px 0 15px 0; overflow: hidden; }
+.attr-fill { height: 100%; background: var(--a-color); }
+
+.achievements-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ach-card { background: var(--bg); padding: 10px; border-radius: 8px; text-align: center; border: 1px solid #333; opacity: 0.5; }
+.ach-card.unlocked { opacity: 1; border-color: var(--s-color); background: rgba(255,215,0,0.1); }
+
+.bottom-nav { position: fixed; bottom: 0; width: 100%; background: var(--card-bg); display: flex; border-top: 1px solid #333; z-index: 100; }
+.nav-btn { flex: 1; background: none; border: none; padding: 15px; color: var(--text-muted); font-size: 1em; }
+.nav-btn.active { color: var(--accent); border-top: 2px solid var(--accent); }
+.tab-content { display: none; }
+.tab-content.active { display: block; animation: fadeIn 0.3s; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+#confetti-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999; overflow: hidden; }
+.confetti { position: absolute; width: 8px; height: 16px; animation: fall 3s linear forwards; }
+@keyframes fall { to { transform: translateY(100vh) rotate(720deg); } }
+
+.edit-row { display: flex; gap: 5px; margin-bottom: 5px; align-items: center; background: var(--bg); padding: 5px; border-radius: 4px; }
