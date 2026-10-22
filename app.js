@@ -55,6 +55,13 @@ const defaultConfig = {
     { id: "mq8", name: "Zero Social Media Day", xp: 25, attr: "FOCUS" }
   ],
   extras: [
+    // Optional Extras (tier: 0 = Unlocked Everyday)
+    { id: "e11", tier: 0, name: "Badminton or Swim", xp: 60, attr: "VITALITY", weeklyOnce: true },
+    { id: "e12", tier: 0, name: "Long run 5K+", xp: 80, attr: "VITALITY", weeklyOnce: true },
+    { id: "e13", tier: 0, name: "Social group activities", xp: 60, attr: "VOICE" },
+    { id: "e16", tier: 0, name: "Animate for Yourself 2h", xp: 120, attr: "CRAFT", weeklyOnce: true },
+
+    // Tier 1 Extras
     { id: "e1", tier: 1, name: "Flashcards review, 15 min", xp: 20, attr: "VOICE" },
     { id: "e1a", parent: "e1", name: "Adding new phrases", xp: 15 },
     { id: "e2", tier: 1, name: "Brain dump writing", xp: 20, attr: "SPIRIT" },
@@ -64,6 +71,8 @@ const defaultConfig = {
     { id: "e5", tier: 1, name: "Reaching out to someone", xp: 20, attr: "VOICE" },
     { id: "e6", tier: 1, name: "Read Reddit/Discord phrases", xp: 20, attr: "VOICE" },
     { id: "e7", tier: 1, name: "Clean eating day", xp: 20, attr: "VITALITY" },
+
+    // Tier 2 Extras
     { id: "e8", tier: 2, name: "Rig course progress 30m", xp: 20, attr: "CRAFT" },
     { id: "e8a", parent: "e8", name: "+ 2 hours", xp: 30 },
     { id: "e9", tier: 2, name: "Deep watch productive", xp: 20, attr: "CRAFT" },
@@ -72,12 +81,8 @@ const defaultConfig = {
     { id: "e10a", parent: "e10", name: "Write summary/lessons", xp: 20 },
     { id: "e10b", parent: "e10", name: "Save references PureRef", xp: 15 },
     { id: "e10c", parent: "e10", name: "Speak out loud feelings", xp: 15 },
-    { id: "e11", tier: 2, name: "Badminton or Swim", xp: 60, attr: "VITALITY", weeklyOnce: true },
-    { id: "e12", tier: 2, name: "Long run 5K+", xp: 80, attr: "VITALITY", weeklyOnce: true },
-    { id: "e13", tier: 2, name: "Social group activities", xp: 60, attr: "VOICE" },
     { id: "e14", tier: 2, name: "Anim Watch & Analyze 30m", xp: 40, attr: "CRAFT" },
-    { id: "e15", tier: 2, name: "Record yourself speaking", xp: 40, attr: "VOICE" },
-    { id: "e16", tier: 2, name: "Animate for Yourself 2h", xp: 120, attr: "CRAFT", weeklyOnce: true }
+    { id: "e15", tier: 2, name: "Record yourself speaking", xp: 40, attr: "VOICE" }
   ],
   enemies: [
     { id: "en1", name: "Dwelling on past/anxiety", xp: 30, isTime: true },
@@ -109,8 +114,7 @@ const defaultConfig = {
 // --- 2. CONSTANTS & HELPERS ---
 const STORAGE_KEY = 'habitGamifiedDB';
 const T1_REQ = 220;                    // quest XP needed to open Extras tier 1
-const COUNT_BONUS_IN_SEASON = true;    // boss, weekly review and achievements add to season XP (rank). Set false to revert.
-const BOSS_XP = 150;
+const COUNT_BONUS_IN_SEASON = true;    // weekly review and achievements add to season XP
 const REVIEW_XP = 50;
 const GRADES = [['D', 100], ['C', 220], ['B', 350], ['A', 500], ['S', 650]];
 const GRADE_MAX = 650;
@@ -130,8 +134,6 @@ const fmt = n => Number(n).toLocaleString('en-US');
 const cap = s => s.charAt(0) + s.slice(1).toLowerCase();
 const newId = () => 'c' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
 
-// Dates are handled as local "YYYY-MM-DD" keys. (The old code used toISOString(), which is UTC,
-// so anything you did between midnight and 7 AM in Indonesia landed on the previous day.)
 const pad2 = n => String(n).padStart(2, '0');
 const toKey = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const fromKey = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d, 12); };
@@ -140,7 +142,7 @@ const todayKey = () => toKey(new Date());
 const isKey = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
 const dayShort = key => fromKey(key).toLocaleDateString('en-GB', { weekday: 'short' });
 
-function getWeekStr(key) {           // same "YYYY-Wn" format as before, so old data still lines up
+function getWeekStr(key) {
   const [y, m, dd] = key.split('-').map(Number);
   const d = new Date(Date.UTC(y, m - 1, dd));
   d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
@@ -148,7 +150,7 @@ function getWeekStr(key) {           // same "YYYY-Wn" format as before, so old 
   const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
   return `${d.getUTCFullYear()}-W${weekNo}`;
 }
-function weekDays(key) {             // Monday..Sunday of the week containing key
+function weekDays(key) {
   const idx = (fromKey(key).getDay() + 6) % 7;
   const mon = addDays(key, -idx);
   return [0, 1, 2, 3, 4, 5, 6].map(i => addDays(mon, i));
@@ -162,8 +164,6 @@ function freshDB() {
   };
 }
 
-// Enemies used to be logged once per button press. Now each enemy is a single checkbox per day,
-// so older logs are collapsed (minutes are summed, repeat hits are kept as a count, penalties stay identical).
 function collapseEnemies(list, enemyCfg) {
   const out = [], map = {};
   list.forEach(e => {
@@ -184,6 +184,12 @@ function normalize(raw) {
   ['mainQuests', 'extras', 'enemies', 'achievements', 'ranks'].forEach(k => {
     if (!Array.isArray(d.config[k])) d.config[k] = clone(defaultConfig[k]);
   });
+  // Migration: ensure optional extras have tier: 0
+  const optIds = ['e11', 'e12', 'e13', 'e16'];
+  d.config.extras.forEach(item => {
+    if (optIds.includes(item.id)) item.tier = 0;
+  });
+
   if (!d.logs || typeof d.logs !== 'object') d.logs = {};
   if (!d.weekly || typeof d.weekly !== 'object') d.weekly = {};
   if (!Array.isArray(d.unlockedAch)) d.unlockedAch = [];
@@ -195,7 +201,7 @@ function normalize(raw) {
   }
   for (const w in d.weekly) {
     const x = d.weekly[w] = d.weekly[w] || {};
-    x.bonuses = x.bonuses || {}; x.boss = !!x.boss; x.review = x.review || {};
+    x.bonuses = x.bonuses || {}; x.review = x.review || {};
   }
   return d;
 }
@@ -225,11 +231,11 @@ let reviewLoadedFor = null;
 let editCat = 'mainQuests';
 
 function ensureDay(key) { if (!db.logs[key]) db.logs[key] = { ticked: {}, enemies: [], review: {} }; return db.logs[key]; }
-function ensureWeek(wk) { if (!db.weekly[wk]) db.weekly[wk] = { bonuses: {}, boss: false, review: {} }; return db.weekly[wk]; }
+function ensureWeek(wk) { if (!db.weekly[wk]) db.weekly[wk] = { bonuses: {}, review: {} }; return db.weekly[wk]; }
 ensureDay(currentDate); ensureWeek(currentWeekStr);
 
 // --- 4. CORE LOGIC ---
-const tierOf = it => it.tier || (it.parent ? (db.config.extras.find(p => p.id === it.parent) || {}).tier : undefined);
+const tierOf = it => it.tier !== undefined ? it.tier : (it.parent ? (db.config.extras.find(p => p.id === it.parent) || {}).tier : undefined);
 const mainsFor = key => db.config.mainQuests.filter(q => !q.parent && (!q.from || q.from <= key));
 
 function dayIsClear(key) {
@@ -240,7 +246,7 @@ function dayIsClear(key) {
 
 function t2Req(key) {
   const m = parseInt(key.slice(5, 7), 10) - 1;
-  return m === 9 ? 400 : (m === 10 ? 425 : 450);   // Oct 400, Nov 425, otherwise 450
+  return m === 9 ? 400 : (m === 10 ? 425 : 450);
 }
 
 function calcDayStats(key) {
@@ -257,7 +263,7 @@ function calcDayStats(key) {
     if (mq) { if (mq.parent) rawSub += pts; else rawMain += pts; }
     else rawExtra += pts;
   }
-  const base = rawMain + rawSub + rawExtra;      // "quest XP": decides tier unlocks
+  const base = rawMain + rawSub + rawExtra;
 
   let penalty = 0;
   log.enemies.forEach(e => {
@@ -271,7 +277,7 @@ function calcDayStats(key) {
   while (dayIsClear(k)) { streak++; k = addDays(k, -1); }
   let mult = 1.0;
   if (streak >= 14) mult = 1.5; else if (streak >= 7) mult = 1.25; else if (streak >= 3) mult = 1.1;
-  if (streak === 0 && isClear) mult = Math.max(mult, 1.2);   // Second Wind
+  if (streak === 0 && isClear) mult = Math.max(mult, 1.2);
 
   const untouchable = isClear && log.enemies.length === 0;
   const mainBonus = Math.floor(rawMain * mult) - rawMain;
@@ -299,8 +305,6 @@ function streakInfo() {
   return { cur, best };
 }
 
-// Attribute XP is now derived from the logs. Before, it was added on tick but never removed on untick,
-// so ticking and unticking a quest could farm infinite attribute XP.
 function computeAttributes() {
   const out = { CRAFT: 0, VOICE: 0, VITALITY: 0, SPIRIT: 0, FOCUS: 0 };
   const all = [...db.config.mainQuests, ...db.config.extras];
@@ -318,12 +322,12 @@ function computeAttributes() {
 const reviewDone = wk => !!(wk && wk.review && ['win', 'enemy', 'rule'].some(k => (wk.review[k] || '').trim()));
 function bonusXP() {
   let t = 0;
-  for (const w in db.weekly) { if (db.weekly[w].boss) t += BOSS_XP; if (reviewDone(db.weekly[w])) t += REVIEW_XP; }
+  for (const w in db.weekly) { if (reviewDone(db.weekly[w])) t += REVIEW_XP; }
   db.unlockedAch.forEach(id => { const a = db.config.achievements.find(x => x.id === id); if (a) t += a.xp; });
   return t;
 }
 
-function ladder() {                  // flatten ranks into divisions, skipping the 999999 placeholders
+function ladder() {
   const out = [];
   db.config.ranks.forEach(r => {
     const valid = r.tiers.filter(x => x < 999999);
@@ -332,20 +336,22 @@ function ladder() {                  // flatten ranks into divisions, skipping t
   return out;
 }
 
-function weeklyDoneOn(id, key) {     // another day this week where a once-a-week quest was already ticked
+function weeklyDoneOn(id, key) {
   return weekDays(key).find(d => d !== key && db.logs[d] && db.logs[d].ticked[id]) || null;
 }
 
 // --- 5. FEEDBACK ---
 let toastTimer;
 function toast(msg) {
-  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  const t = $('toast'); if (!t) return;
+  t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
 }
 function celebrate(msg) {
   if (msg) toast(msg);
   if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const c = $('confetti-container'); c.innerHTML = '';
+  const c = $('confetti-container'); if (!c) return;
+  c.innerHTML = '';
   const cs = getComputedStyle(document.documentElement);
   const colors = ['--g-s', '--g-a', '--g-b', '--g-c'].map(v => cs.getPropertyValue(v).trim() || '#ffc857');
   for (let i = 0; i < 44; i++) {
@@ -365,9 +371,9 @@ function renderUI() {
   const s = stats(currentDate);
   db.attributes = computeAttributes();
 
-  $('date-picker').value = currentDate;
-  $('date-text').textContent = fromKey(currentDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-  $('today-btn').hidden = currentDate === todayKey();
+  if ($('date-picker'))$('date-picker').value = currentDate;
+  if ($('date-text'))$('date-text').textContent = fromKey(currentDate).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  if ($('today-btn'))$('today-btn').hidden = currentDate === todayKey();
 
   renderHUD(s, log);
   renderQuests(s, log);
@@ -378,23 +384,24 @@ function renderUI() {
 
 function renderHUD(s, log) {
   const g = s.grade;
-  $('hud').style.setProperty('--g', `var(--g-${g.toLowerCase()})`);
-  $('day-grade').textContent = g;
-  $('day-net-xp').textContent = fmt(s.net);
+  const hud = $('hud');
+  if (hud) hud.style.setProperty('--g', `var(--g-${g.toLowerCase()})`);
+  if ($('day-grade'))$('day-grade').textContent = g;
+  if ($('day-net-xp'))$('day-net-xp').textContent = fmt(s.net);
   const untouched = !Object.keys(log.ticked).length && !log.enemies.length;
-  $('day-message').textContent = untouched ? "Let's lock in." : MESSAGES[g];
-  $('grade-fill').style.width = Math.min(100, s.net / GRADE_MAX * 100) + '%';
+  if ($('day-message'))$('day-message').textContent = untouched ? "Let's lock in." : MESSAGES[g];
+  if ($('grade-fill'))$('grade-fill').style.width = Math.min(100, s.net / GRADE_MAX * 100) + '%';
   document.querySelectorAll('.meter-marks span').forEach(sp => {
     const thr = GRADES.find(x => x[0] === sp.dataset.g)[1];
     sp.classList.toggle('hit', s.net >= thr);
   });
-  $('base-xp').textContent = `Quest XP ${fmt(s.base)}`;
+  if ($('base-xp'))$('base-xp').textContent = `Quest XP ${fmt(s.base)}`;
   const next = GRADES.find(x => x[1] > s.net);
-  $('next-grade-hint').textContent = next ? `${fmt(next[1] - s.net)} XP to ${next[0]}` : 'Top grade reached';
+  if ($('next-grade-hint'))$('next-grade-hint').textContent = next ? `${fmt(next[1] - s.net)} XP to ${next[0]}` : 'Top grade reached';
 }
 
 const CHEVRON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
-const folds = new Map();    // parent quest id -> true when its bonus objectives are folded (resets when you change day)
+const folds = new Map();
 
 function qRow(q, log, key, sectionLocked, kids, open) {
   const done = !!log.ticked[q.id];
@@ -403,14 +410,12 @@ function qRow(q, log, key, sectionLocked, kids, open) {
     const d = weeklyDoneOn(q.id, key);
     if (d && !done) { locked = true; note = `done ${dayShort(d)}`; }
   }
-  if (sectionLocked && !done) locked = true;      // already-ticked items can always be unticked
+  if (sectionLocked && !done) locked = true;
   let tag = '';
   if (note) tag = `<span class="q-tag">${esc(note)}</span>`;
   else if (kids && kids.length) {
     const n = kids.filter(k => log.ticked[k.id]).length;
-    tag = done
-      ? `<button type="button" class="q-tag q-fold" data-fold="${esc(q.id)}" aria-expanded="${open}" aria-label="Bonus objectives, ${n} of ${kids.length} done">${n}/${kids.length}${CHEVRON_SVG}</button>`
-      : `<span class="q-tag" title="Bonus objectives">${n}/${kids.length}</span>`;
+    tag = `<button type="button" class="q-tag q-fold" data-fold="${esc(q.id)}" aria-expanded="${open}" aria-label="Bonus objectives, ${n} of ${kids.length} done">${n}/${kids.length}${CHEVRON_SVG}</button>`;
   } else if (q.weeklyOnce) tag = '<span class="q-tag">once a week</span>';
   const cid = `chk-${esc(q.id)}`;
   return `<div class="q ${done ? 'is-done' : ''} ${locked ? 'is-locked' : ''}"><div class="q-line">
@@ -423,13 +428,16 @@ function qRow(q, log, key, sectionLocked, kids, open) {
   </div></div>`;
 }
 
-// Bonus objectives (sub-quests) only appear once their parent quest is ticked, and the parent can fold them away.
 function questRows(tops, all, log, key, sectionLocked) {
   return tops.map(q => {
     const kids = all.filter(k => k.parent === q.id);
-    const open = !!(log.ticked[q.id] && kids.length && !folds.get(q.id));
+    const open = kids.length > 0 && !!folds.get(q.id);
     let subs = '';
-    if (open) subs = `<ul class="subs">${kids.map(k => `<li class="q-wrap">${qRow(k, log, key, sectionLocked, null, false)}</li>`).join('')}</ul>`;
+    if (open) {
+      const parentDone = !!log.ticked[q.id];
+      const kidLocked = sectionLocked || !parentDone;
+      subs = `<ul class="subs">${kids.map(k => `<li class="q-wrap">${qRow(k, log, key, kidLocked, null, false)}</li>`).join('')}</ul>`;
+    }
     return `<li class="q-wrap">${qRow(q, log, key, sectionLocked, kids, open)}${subs}</li>`;
   }).join('');
 }
@@ -437,8 +445,16 @@ function questRows(tops, all, log, key, sectionLocked) {
 function renderQuests(s, log) {
   const mq = db.config.mainQuests;
   const req = mainsFor(currentDate);
-  $('main-count').textContent = `${req.filter(q => log.ticked[q.id]).length}/${req.length}`;
-  $('main-quests-list').innerHTML = questRows(mq.filter(q => !q.parent), mq, log, currentDate, false);
+  if ($('main-count'))$('main-count').textContent = `${req.filter(q => log.ticked[q.id]).length}/${req.length}`;
+  if ($('main-quests-list'))$('main-quests-list').innerHTML = questRows(mq.filter(q => !q.parent), mq, log, currentDate, false);
+
+  // Render Optional Extras (Tier 0 - Always Unlocked)
+  const optList = $('opt-list');
+  if (optList) {
+    const optTops = db.config.extras.filter(q => !q.parent && q.tier === 0);
+    optList.innerHTML = questRows(optTops, db.config.extras, log, currentDate, false);
+  }
+
   renderTier(1, T1_REQ, s, log);
   renderTier(2, t2Req(currentDate), s, log);
 }
@@ -447,22 +463,38 @@ function renderTier(n, req, s, log) {
   const all = db.config.extras;
   const tops = all.filter(q => !q.parent && q.tier === n);
   const unlocked = s.base >= req;
-  const anyTicked = all.some(q => log.ticked[q.id] && tierOf(q) === n);
 
   const status = $(`t${n}-status`);
-  status.className = 'badge' + (unlocked ? ' on' : '');
-  status.innerHTML = unlocked ? 'Unlocked' : `${LOCK_SVG}${req} XP`;
+  if (status) {
+    status.className = 'badge' + (unlocked ? ' on' : '');
+    status.innerHTML = unlocked ? 'Unlocked' : `${LOCK_SVG}${req} XP`;
+  }
 
   const lock = $(`t${n}-lock`);
-  lock.hidden = unlocked;
-  if (!unlocked) {
-    lock.innerHTML = `<div class="lock-row"><span>${fmt(req - s.base)} more quest XP to unlock</span><span>${fmt(s.base)} / ${req}</span></div>
-      <div class="mini-meter"><i style="width:${Math.min(100, s.base / req * 100)}%"></i></div>`;
+  if (lock) {
+    lock.hidden = unlocked;
+    if (!unlocked) {
+      lock.innerHTML = `<div class="lock-row"><span>${fmt(req - s.base)} more quest XP to unlock</span><span>${fmt(s.base)} / ${req}</span></div>
+        <div class="mini-meter"><i style="width:${Math.min(100, s.base / req * 100)}%"></i></div>`;
+    }
   }
+
+  // Tier section fold button
+  const foldKey = `sec-tier${n}`;
+  const isFoldSet = folds.has(foldKey);
+  const open = isFoldSet ? folds.get(foldKey) : unlocked;
+
+  const foldBtn = $(`t${n}-fold-btn`);
+  if (foldBtn) {
+    foldBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    foldBtn.innerHTML = `${open ? 'Hide' : 'Show'} (${tops.length})${CHEVRON_SVG}`;
+  }
+
   const list = $(`t${n}-list`);
-  const show = unlocked || anyTicked;       // if XP dropped below the line, keep ticked items visible so they can be undone
-  list.hidden = !show;
-  list.innerHTML = show ? questRows(tops, all, log, currentDate, !unlocked) : '';
+  if (list) {
+    list.hidden = !open;
+    list.innerHTML = open ? questRows(tops, all, log, currentDate, !unlocked) : '';
+  }
 }
 
 function enemyPenalty(en, entry) {
@@ -471,7 +503,9 @@ function enemyPenalty(en, entry) {
 }
 
 function renderEnemies(log, s) {
-  $('enemies-list').innerHTML = db.config.enemies.map(en => {
+  const enemiesList = $('enemies-list');
+  if (!enemiesList) return;
+  enemiesList.innerHTML = db.config.enemies.map(en => {
     const entry = log.enemies.find(e => e.id === en.id);
     const on = !!entry;
     const min = entry && entry.min != null ? entry.min : 30;
@@ -495,8 +529,10 @@ function renderEnemies(log, s) {
       </div>${stepper}</div></li>`;
   }).join('');
   const tot = $('enemy-total');
-  tot.textContent = s.penalty ? `\u2212${fmt(s.penalty)} XP` : 'None today';
-  tot.classList.toggle('has', s.penalty > 0);
+  if (tot) {
+    tot.textContent = s.penalty ? `\u2212${fmt(s.penalty)} XP` : 'None today';
+    tot.classList.toggle('has', s.penalty > 0);
+  }
 }
 
 function renderBreakdown(s) {
@@ -508,15 +544,15 @@ function renderBreakdown(s) {
   if (s.untouchable) h += row('Untouchable day', '+30', 'pos');
   if (s.penalty) h += row('Enemies', `\u2212${fmt(s.penalty)}`, 'neg');
   h += row('Net XP today', fmt(s.net), 'total');
-  $('breakdown-content').innerHTML = h;
+  if ($('breakdown-content')) $('breakdown-content').innerHTML = h;
 }
 
 // --- 7. RENDER: PROGRESS ---
 function renderProgress() {
   const si = streakInfo(), todayMult = stats(todayKey()).mult;
-  $('streak-cur').textContent = si.cur;
-  $('streak-best').textContent = si.best;
-  $('streak-mult').textContent = 'x' + todayMult;
+  if ($('streak-cur')) $('streak-cur').textContent = si.cur;
+  if ($('streak-best')) $('streak-best').textContent = si.best;
+  if ($('streak-mult')) $('streak-mult').textContent = 'x' + todayMult;
   renderHeatmap();
   renderWeek();
   renderAttributes();
@@ -534,31 +570,38 @@ function renderHeatmap() {
     const g = db.logs[k] ? stats(k).grade : 'F';
     html += `<span class="heat-box h-${g}" title="${k}: ${g}"></span>`;
   }
-  const c = $('heatmap-container'); c.innerHTML = html; c.scrollLeft = c.scrollWidth;
+  const c = $('heatmap-container');
+  if (c) { c.innerHTML = html; c.scrollLeft = c.scrollWidth; }
 }
 
 function renderWeek() {
   const today = todayKey(); let total = 0;
-  $('week-boxes').innerHTML = weekDays(currentDate).map((k, i) => {
-    const st = stats(k), log = db.logs[k];
-    total += st.net;
-    const has = log && (Object.keys(log.ticked).length || log.enemies.length);
-    const g = has ? st.grade : null;
-    return `<button class="wd ${k === currentDate ? 'is-sel' : ''} ${k === today ? 'is-today' : ''}" data-date="${k}" style="--g:${g ? `var(--g-${g.toLowerCase()})` : 'var(--faint)'}" aria-label="${dayShort(k)} ${k}">
-      <small>${'MTWTFSS'[i]}</small><b>${g || '\u2013'}</b></button>`;
-  }).join('');
-  $('week-xp').textContent = `${fmt(total)} XP`;
+  if ($('week-boxes')) {
+    $('week-boxes').innerHTML = weekDays(currentDate).map((k, i) => {
+      const st = stats(k), log = db.logs[k];
+      total += st.net;
+      const has = log && (Object.keys(log.ticked).length || log.enemies.length);
+      const g = has ? st.grade : null;
+      return `<button class="wd ${k === currentDate ? 'is-sel' : ''} ${k === today ? 'is-today' : ''}" data-date="${k}" style="--g:${g ? `var(--g-${g.toLowerCase()})` : 'var(--faint)'}" aria-label="${dayShort(k)} ${k}">
+        <small>${'MTWTFSS'[i]}</small><b>${g || '\u2013'}</b></button>`;
+    }).join('');
+  }
+  if ($('week-xp')) $('week-xp').textContent = `${fmt(total)} XP`;
 
   const wk = ensureWeek(currentWeekStr);
-  $('boss-check').checked = !!wk.boss;
-  if (reviewLoadedFor !== currentWeekStr) {          // don't overwrite text the person is still typing
-    ['win', 'enemy', 'rule'].forEach(k => { $(`review-${k}`).value = wk.review[k] || ''; });
+  if (reviewLoadedFor !== currentWeekStr) {
+    ['win', 'enemy', 'rule'].forEach(k => {
+      const el = $(`review-${k}`);
+      if (el) el.value = wk.review[k] || '';
+    });
     reviewLoadedFor = currentWeekStr;
   }
 }
 
 function renderAttributes() {
-  $('attributes-list').innerHTML = Object.keys(db.attributes).map(k => {
+  const attrList = $('attributes-list');
+  if (!attrList) return;
+  attrList.innerHTML = Object.keys(db.attributes).map(k => {
     const xp = db.attributes[k];
     let lv = 1; ATTR_LEVELS.forEach((t, i) => { if (xp >= t) lv = i + 1; });
     const lo = ATTR_LEVELS[lv - 1], hi = ATTR_LEVELS[lv];
@@ -577,29 +620,33 @@ function renderRank() {
   let idx = 0; lad.forEach((r, i) => { if (total >= r.xp) idx = i; });
   const cur = lad[idx], next = lad[idx + 1];
 
-  $('header-rank').textContent = cur.label;
-  $('rank-name').textContent = cur.label;
-  $('season-xp').textContent = `${fmt(total)} XP`;
-  $('rank-progress-fill').style.width = (next ? (total - cur.xp) / (next.xp - cur.xp) * 100 : 100) + '%';
-  $('rank-progress-text').textContent = next ? `${fmt(next.xp - total)} XP to ${next.label}` : 'Highest rank reached';
-  $('rank-source').textContent = bonus ? `${fmt(daily)} from days, ${fmt(bonus)} from boss, reviews and achievements.` : '';
+  if ($('header-rank')) $('header-rank').textContent = cur.label;
+  if ($('rank-name')) $('rank-name').textContent = cur.label;
+  if ($('season-xp')) $('season-xp').textContent = `${fmt(total)} XP`;
+  if ($('rank-progress-fill')) $('rank-progress-fill').style.width = (next ? (total - cur.xp) / (next.xp - cur.xp) * 100 : 100) + '%';
+  if ($('rank-progress-text')) $('rank-progress-text').textContent = next ? `${fmt(next.xp - total)} XP to ${next.label}` : 'Highest rank reached';
+  if ($('rank-source')) $('rank-source').textContent = bonus ? `${fmt(daily)} from days, ${fmt(bonus)} from reviews and achievements.` : '';
 
   const ranks = db.config.ranks;
-  $('rank-segs').innerHTML = ranks.map((r, i) => {
-    const start = r.tiers[0], end = ranks[i + 1] ? ranks[i + 1].tiers[0] : null;
-    const isNow = r.name === cur.rank;
-    const pct = end ? Math.max(0, Math.min(1, (total - start) / (end - start))) * 100 : (total >= start ? 100 : 0);
-    return `<div class="${isNow ? 'now' : (pct >= 100 ? 'done' : '')}" title="${esc(r.name)}"><i style="width:${pct}%"></i></div>`;
-  }).join('');
+  if ($('rank-segs')) {
+    $('rank-segs').innerHTML = ranks.map((r, i) => {
+      const start = r.tiers[0], end = ranks[i + 1] ? ranks[i + 1].tiers[0] : null;
+      const isNow = r.name === cur.rank;
+      const pct = end ? Math.max(0, Math.min(1, (total - start) / (end - start))) * 100 : (total >= start ? 100 : 0);
+      return `<div class="${isNow ? 'now' : (pct >= 100 ? 'done' : '')}" title="${esc(r.name)}"><i style="width:${pct}%"></i></div>`;
+    }).join('');
+  }
 }
 
 function renderAchievements() {
   const list = db.config.achievements;
-  $('ach-count').textContent = `${db.unlockedAch.filter(id => list.some(a => a.id === id)).length}/${list.length}`;
-  $('achievements-list').innerHTML = list.map(a => {
-    const on = db.unlockedAch.includes(a.id);
-    return `<button class="ach ${on ? 'on' : ''}" data-id="${esc(a.id)}" aria-pressed="${on}"><b>${esc(a.name)}</b><small>+${a.xp} XP</small></button>`;
-  }).join('');
+  if ($('ach-count')) $('ach-count').textContent = `${db.unlockedAch.filter(id => list.some(a => a.id === id)).length}/${list.length}`;
+  if ($('achievements-list')) {
+    $('achievements-list').innerHTML = list.map(a => {
+      const on = db.unlockedAch.includes(a.id);
+      return `<button class="ach ${on ? 'on' : ''}" data-id="${esc(a.id)}" aria-pressed="${on}"><b>${esc(a.name)}</b><small>+${a.xp} XP</small></button>`;
+    }).join('');
+  }
 }
 
 // --- 8. EVENTS ---
@@ -658,14 +705,8 @@ function setDate(key) {
 document.addEventListener('change', e => {
   const t = e.target;
   if (t.classList.contains('e-check')) return onEnemyToggle(t);
-  if (t.classList.contains('q-check') && t.id !== 'boss-check') return onQuestToggle(t);
+  if (t.classList.contains('q-check')) return onQuestToggle(t);
   if (t.classList.contains('e-min')) return setEnemyMinutes(t.dataset.id, parseInt(t.value, 10));
-  if (t.id === 'boss-check') {
-    ensureWeek(currentWeekStr).boss = t.checked;
-    saveData(); renderUI();
-    if (t.checked) celebrate(`Boss defeated, +${BOSS_XP} XP`);
-    return;
-  }
   if (t.id === 'date-picker') { if (t.value) setDate(t.value); return; }
   if (t.dataset && t.dataset.f && t.closest('.er')) return onEditField(t);
 });
@@ -673,8 +714,20 @@ document.addEventListener('change', e => {
 document.addEventListener('click', e => {
   const t = e.target;
   const nav = t.closest('.nav-btn'); if (nav) return switchTab(nav.dataset.target);
+  
+  // Section Fold
+  const secFold = t.closest('[data-sec-fold]');
+  if (secFold) {
+    const key = `sec-${secFold.dataset.secFold}`;
+    const curr = folds.has(key) ? folds.get(key) : (secFold.dataset.secFold === 'tier1' ? stats(currentDate).base >= T1_REQ : stats(currentDate).base >= t2Req(currentDate));
+    folds.set(key, !curr);
+    return renderUI();
+  }
+
+  // Quest Fold
   const fold = t.closest('.q-fold');
   if (fold) { folds.set(fold.dataset.fold, !folds.get(fold.dataset.fold)); return renderUI(); }
+
   const step = t.closest('.step');
   if (step) {
     const entry = ensureDay(currentDate).enemies.find(x => x.id === step.dataset.id);
@@ -703,11 +756,14 @@ document.addEventListener('click', e => {
   const actBtn = t.closest('[data-act]'); if (actBtn && actBtn.closest('.er')) return onEditAction(actBtn);
 });
 
-$('date-picker').addEventListener('click', () => { try { $('date-picker').showPicker(); } catch (e) { /* not supported, native control handles it */ } });
+if ($('date-picker')) {
+  $('date-picker').addEventListener('click', () => { try { $('date-picker').showPicker(); } catch (e) { /* fallback */ } });
+}
 
 // --- 9. EDIT TAB ---
 const EDIT_CATS = {
   mainQuests: { arr: 'mainQuests', noun: 'quest' },
+  optional: { arr: 'extras', tier: 0, noun: 'quest' },
   tier1: { arr: 'extras', tier: 1, noun: 'quest' },
   tier2: { arr: 'extras', tier: 2, noun: 'quest' },
   enemies: { arr: 'enemies', noun: 'enemy' }
@@ -716,19 +772,21 @@ const EDIT_CATS = {
 function setEditCat(cat) {
   editCat = cat;
   document.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('active', b.dataset.cat === cat));
-  $('btn-add-item').textContent = `Add ${EDIT_CATS[cat].noun}`;
+  if ($('btn-add-item')) $('btn-add-item').textContent = `Add ${EDIT_CATS[cat].noun}`;
   renderEditList();
 }
 
 function editItems() {
   const c = EDIT_CATS[editCat], arr = db.config[c.arr];
-  return c.tier ? arr.filter(it => tierOf(it) === c.tier) : arr;
+  return c.tier !== undefined ? arr.filter(it => tierOf(it) === c.tier) : arr;
 }
 
 function renderEditList() {
   const isEnemy = editCat === 'enemies';
   const items = editItems();
-  $('edit-list-container').innerHTML = items.length ? items.map(it => {
+  const editContainer = $('edit-list-container');
+  if (!editContainer) return;
+  editContainer.innerHTML = items.length ? items.map(it => {
     const sub = !!it.parent;
     const attrSel = (!sub && !isEnemy) ? `<select data-f="attr" aria-label="Attribute"><option value="">No attribute</option>${ATTRS.map(a => `<option value="${a}" ${it.attr === a ? 'selected' : ''}>${cap(a)}</option>`).join('')}</select>` : '';
     const timed = isEnemy ? `<label class="er-timed"><input type="checkbox" data-f="isTime" ${it.isTime ? 'checked' : ''}> per 30 min</label>` : '';
@@ -759,7 +817,6 @@ function onEditField(el) {
   saveData(); renderUI();
 }
 
-// A top-level quest moves together with its bonus objectives, and only past siblings in its own group/tier.
 function moveItem(arr, id, dir) {
   const i = arr.findIndex(x => x.id === id); if (i < 0) return;
   const it = arr[i];
@@ -801,60 +858,76 @@ function focusEditRow(id) {
   if (input) { input.focus(); input.select(); }
 }
 
-$('btn-add-item').addEventListener('click', () => {
-  const c = EDIT_CATS[editCat];
-  let item;
-  if (editCat === 'enemies') item = { id: newId(), name: 'New enemy', xp: 20, isTime: false };
-  else {
-    item = { id: newId(), name: 'New quest', xp: 10 };
-    if (c.tier) item.tier = c.tier;
-    if (editCat === 'mainQuests') item.from = todayKey();   // only required from today on, so past streaks stay intact
-  }
-  db.config[c.arr].push(item);
-  saveData(); renderEditList(); renderUI(); focusEditRow(item.id);
-});
+if ($('btn-add-item')) {
+  $('btn-add-item').addEventListener('click', () => {
+    const c = EDIT_CATS[editCat];
+    let item;
+    if (editCat === 'enemies') item = { id: newId(), name: 'New enemy', xp: 20, isTime: false };
+    else {
+      item = { id: newId(), name: 'New quest', xp: 10 };
+      if (c.tier !== undefined) item.tier = c.tier;
+      if (editCat === 'mainQuests') item.from = todayKey();
+    }
+    db.config[c.arr].push(item);
+    saveData(); renderEditList(); renderUI(); focusEditRow(item.id);
+  });
+}
 
-$('btn-reset-defaults').addEventListener('click', () => {
-  if (!confirm('Reset all quests, enemies and ranks to the default rules? Your logged history will not be deleted.')) return;
-  db.config = clone(defaultConfig);
-  saveData(); renderUI(); renderEditList(); toast('Default rules restored');
-});
+if ($('btn-reset-defaults')) {
+  $('btn-reset-defaults').addEventListener('click', () => {
+    if (!confirm('Reset all quests, enemies and ranks to the default rules? Your logged history will not be deleted.')) return;
+    db.config = clone(defaultConfig);
+    saveData(); renderUI(); renderEditList(); toast('Default rules restored');
+  });
+}
 
 // --- 10. BACKUP ---
 function renderBackupInfo() {
-  $('last-backup').textContent = 'Last backup: ' + (db.lastExport
-    ? new Date(db.lastExport).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-    : 'never');
+  if ($('last-backup')) {
+    $('last-backup').textContent = 'Last backup: ' + (db.lastExport
+      ? new Date(db.lastExport).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+      : 'never');
+  }
 }
 
-$('btn-export').addEventListener('click', () => {
-  db.lastExport = Date.now(); saveData();
-  const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = `habit-gamified-backup-${todayKey()}.json`;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  renderBackupInfo(); toast('Backup exported');
-});
+if ($('btn-export')) {
+  $('btn-export').addEventListener('click', () => {
+    db.lastExport = Date.now(); saveData();
+    const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `habit-gamified-backup-${todayKey()}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    renderBackupInfo(); toast('Backup exported');
+  });
+}
 
 let pendingImport = null;
-$('btn-import').addEventListener('change', e => {
-  const file = e.target.files[0]; if (!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    try {
-      const parsed = JSON.parse(ev.target.result);
-      if (!parsed || typeof parsed !== 'object' || !parsed.logs || typeof parsed.logs !== 'object') throw new Error('shape');
-      pendingImport = normalize(parsed);
-      const dlg = $('import-dialog'); dlg.returnValue = '';
-      if (dlg.showModal) dlg.showModal();
-      else applyImport(confirm('Merge with current data? OK = Merge, Cancel = Replace all') ? 'merge' : 'replace');
-    } catch (err) { toast('That file is not a valid backup.'); }
-    e.target.value = '';
-  };
-  reader.readAsText(file);
-});
-$('import-dialog').addEventListener('close', () => applyImport($('import-dialog').returnValue));
+if ($('btn-import')) {
+  $('btn-import').addEventListener('change', e => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        if (!parsed || typeof parsed !== 'object' || !parsed.logs || typeof parsed.logs !== 'object') throw new Error('shape');
+        pendingImport = normalize(parsed);
+        const dlg = $('import-dialog');
+        if (dlg) {
+          dlg.returnValue = '';
+          if (dlg.showModal) dlg.showModal();
+          else applyImport(confirm('Merge with current data? OK = Merge, Cancel = Replace all') ? 'merge' : 'replace');
+        }
+      } catch (err) { toast('That file is not a valid backup.'); }
+      e.target.value = '';
+    };
+    reader.readAsText(file);
+  });
+}
+
+if ($('import-dialog')) {
+  $('import-dialog').addEventListener('close', () => applyImport($('import-dialog').returnValue));
+}
 
 const logWeight = l => Object.keys(l.ticked).length + l.enemies.length;
 function applyImport(mode) {
@@ -866,7 +939,7 @@ function applyImport(mode) {
     for (const w in inc.weekly) {
       const a = db.weekly[w], b = inc.weekly[w];
       if (!a) db.weekly[w] = b;
-      else { a.boss = a.boss || b.boss; if (!reviewDone(a) && reviewDone(b)) a.review = b.review; }
+      else { if (!reviewDone(a) && reviewDone(b)) a.review = b.review; }
     }
     inc.unlockedAch.forEach(id => { if (!db.unlockedAch.includes(id)) db.unlockedAch.push(id); });
   }
@@ -877,7 +950,7 @@ function applyImport(mode) {
 
 // --- 11. BOOT ---
 let bootToday = todayKey();
-document.addEventListener('visibilitychange', () => {   // app left open past midnight: roll over to the new day
+document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible' || todayKey() === bootToday) return;
   const wasOnToday = currentDate === bootToday;
   bootToday = todayKey();
