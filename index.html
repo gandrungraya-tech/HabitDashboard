@@ -1,157 +1,157 @@
-!DOCTYPE html
-html lang=en
-head
-  meta charset=UTF-8
-  meta name=viewport content=width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no
-  titleHabit Gamifiedtitle
-  link rel=manifest href=manifest.json
-  link rel=stylesheet href=style.css
-  meta name=theme-color content=#121212
-head
-body
-  div id=confetti-containerdiv
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Habit Gamified</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+  <meta name="theme-color" content="#121212">
+</head>
+<body>
+  <div id="confetti-container"></div>
   
-  header class=top-bar
-    div class=logoHabit Gamifieddiv
-    div class=date-selector
-      button id=prev-day◀button
-      input type=date id=date-picker
-      button id=next-day▶button
-      button id=today-btnTodaybutton
-    div
-    div class=rank-badge id=header-rankIron Idiv
-  header
+  <header class="top-bar">
+    <div class="logo">Habit Gamified</div>
+    <div class="date-selector">
+      <button id="prev-day">◀</button>
+      <input type="date" id="date-picker">
+      <button id="next-day">▶</button>
+      <button id="today-btn">Today</button>
+    </div>
+    <div class="rank-badge" id="header-rank">Iron I</div>
+  </header>
 
-  main class=app-container
-    !-- TODAY TAB --
-    section id=tab-today class=tab-content active
-      div class=card day-card
-        div class=day-header
-          h2 id=day-gradeCh2
-          div
-            h1 id=day-net-xp0 XPh1
-            p id=day-messageLet's lock in.p
-          div
-        div
-        div class=progress-track
-          div class=progress-fill id=day-progress-filldiv
-          div class=marker style=left 30%; title=Day Clear (220)div
-          div class=marker style=left 55%; title=Tier 2div
-        div
-        p class=stats-line id=main-quest-countMain quests 09p
-      div
+  <main class="app-container">
+    <!-- TODAY TAB -->
+    <section id="tab-today" class="tab-content active">
+      <div class="card day-card">
+        <div class="day-header">
+          <h2 id="day-grade">C</h2>
+          <div>
+            <h1 id="day-net-xp">0 XP</h1>
+            <p id="day-message">Let's lock in.</p>
+          </div>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="day-progress-fill"></div>
+          <div class="marker" style="left: 30%;" title="Day Clear (220)"></div>
+          <div class="marker" style="left: 55%;" title="Tier 2"></div>
+        </div>
+        <p class="stats-line" id="main-quest-count">Main quests 0/9</p>
+      </div>
 
-      div class=card
-        h3Main Questsh3
-        div id=main-quests-list class=quest-listdiv
-      div
+      <div class="card">
+        <h3>Main Quests</h3>
+        <div id="main-quests-list" class="quest-list"></div>
+      </div>
 
-      div class=card
-        h3Extras Tier 1h3
-        div id=t1-lock class=lock-bannerUnlocks at 220 XP.div
-        div id=t1-list class=quest-list locked-sectiondiv
-      div
+      <div class="card">
+        <h3>Extras: Tier 1</h3>
+        <div id="t1-lock" class="lock-banner">Unlocks at 220 XP.</div>
+        <div id="t1-list" class="quest-list locked-section"></div>
+      </div>
 
-      div class=card
-        h3Extras Tier 2h3
-        div id=t2-lock class=lock-bannerUnlocks at 400 XP.div
-        div id=t2-list class=quest-list locked-sectiondiv
-      div
+      <div class="card">
+        <h3>Extras: Tier 2</h3>
+        <div id="t2-lock" class="lock-banner">Unlocks at 400 XP.</div>
+        <div id="t2-list" class="quest-list locked-section"></div>
+      </div>
 
-      div class=card enemies-card
-        h3Enemiesh3
-        p class=subtextHits reduce today's Net XP.p
-        div id=enemies-list class=enemy-listdiv
-      div
+      <div class="card enemies-card">
+        <h3>Enemies</h3>
+        <p class="subtext">Hits reduce today's Net XP.</p>
+        <div id="enemies-list" class="enemy-list"></div>
+      </div>
 
-      details class=card xp-breakdown
-        summaryXP Breakdownsummary
-        div id=breakdown-contentdiv
-      details
-    section
+      <details class="card xp-breakdown">
+        <summary>XP Breakdown</summary>
+        <div id="breakdown-content"></div>
+      </details>
+    </section>
 
-    !-- PROGRESS TAB --
-    section id=tab-progress class=tab-content
-      div class=card
-        div class=flex-between
-          h3Streakh3
-          button id=toggle-chart class=btn-smallToggle Chartbutton
-        div
-        p id=streak-statsCurrent 0  Best 0  Multiplier 1x  Shields 0p
-        div id=heatmap-container class=heatmapdiv
-        canvas id=line-chart style=displaynone; width100%; height150px;canvas
-      div
+    <!-- PROGRESS TAB -->
+    <section id="tab-progress" class="tab-content">
+      <div class="card">
+        <div class="flex-between">
+          <h3>Streak</h3>
+          <button id="toggle-chart" class="btn-small">Toggle Chart</button>
+        </div>
+        <p id="streak-stats">Current: 0 | Best: 0 | Multiplier: 1x | Shields: 0</p>
+        <div id="heatmap-container" class="heatmap"></div>
+        <canvas id="line-chart" style="display:none; width:100%; height:150px;"></canvas>
+      </div>
 
-      div class=card
-        h3This Weekh3
-        p id=weekly-scoreScore 0 XPp
-        div class=week-boxes id=week-boxesdiv
-        hr
-        h4Weekly Bonusesh4
-        div id=weekly-bonuses class=quest-listdiv
-        hr
-        h4 id=weekly-boss-titleBossh4
-        p class=subtext id=weekly-boss-descp
-        label class=quest-iteminput type=checkbox id=boss-check span class=custom-checkspan Beat Boss (+150 XP)label
-        hr
-        h4Weekly Review (+50 XP)h4
-        input type=text id=review-win placeholder=Biggest win...
-        input type=text id=review-enemy placeholder=Costliest enemy...
-        input type=text id=review-rule placeholder=Rule for next week...
-        button id=save-review class=btn-smallSave & Claimbutton
-      div
+      <div class="card">
+        <h3>This Week</h3>
+        <p id="weekly-score">Score: 0 XP</p>
+        <div class="week-boxes" id="week-boxes"></div>
+        <hr>
+        <h4>Weekly Bonuses</h4>
+        <div id="weekly-bonuses" class="quest-list"></div>
+        <hr>
+        <h4 id="weekly-boss-title">Boss</h4>
+        <p class="subtext" id="weekly-boss-desc"></p>
+        <label class="quest-item"><input type="checkbox" id="boss-check"> <span class="custom-check"></span> Beat Boss (+150 XP)</label>
+        <hr>
+        <h4>Weekly Review (+50 XP)</h4>
+        <input type="text" id="review-win" placeholder="Biggest win...">
+        <input type="text" id="review-enemy" placeholder="Costliest enemy...">
+        <input type="text" id="review-rule" placeholder="Rule for next week...">
+        <button id="save-review" class="btn-small">Save & Claim</button>
+      </div>
 
-      div class=card
-        h3Attributesh3
-        div id=attributes-listdiv
-      div
+      <div class="card">
+        <h3>Attributes</h3>
+        <div id="attributes-list"></div>
+      </div>
 
-      div class=card
-        h3Rank Ladderh3
-        p id=rank-progress-text0 XP to Nextp
-        div class=progress-trackdiv class=progress-fill id=rank-progress-filldivdiv
-      div
+      <div class="card">
+        <h3>Rank Ladder</h3>
+        <p id="rank-progress-text">0 XP to Next</p>
+        <div class="progress-track"><div class="progress-fill" id="rank-progress-fill"></div></div>
+      </div>
 
-      div class=card
-        h3Achievementsh3
-        div id=achievements-list class=achievements-griddiv
-      div
-    section
+      <div class="card">
+        <h3>Achievements</h3>
+        <div id="achievements-list" class="achievements-grid"></div>
+      </div>
+    </section>
 
-    !-- EDIT TAB --
-    section id=tab-edit class=tab-content
-      div class=card
-        h3Data & Backuph3
-        button id=btn-export class=btnExport Backupbutton
-        label class=btn btn-outline style=displayblock; text-aligncenter; margin-top10px;
+    <!-- EDIT TAB -->
+    <section id="tab-edit" class="tab-content">
+      <div class="card">
+        <h3>Data & Backup</h3>
+        <button id="btn-export" class="btn">Export Backup</button>
+        <label class="btn btn-outline" style="display:block; text-align:center; margin-top:10px;">
           Import Backup
-          input type=file id=btn-import accept=.json style=displaynone;
-        label
-        p class=subtext id=last-backup style=margin-top10px;Last export Neverp
-      div
-      div class=card
-        h3Edit Game Configh3
-        p class=subtextSelect a category to edit names, XP, and order.p
-        select id=edit-category class=input-full
-          option value=mainQuestsMain Questsoption
-          option value=extrasExtrasoption
-          option value=enemiesEnemiesoption
-        select
-        div id=edit-list-container style=margin-top 15px;div
-        button id=btn-add-item class=btn btn-outline style=margin-top10px;+ Add New Itembutton
-      div
-      div class=card
-        button id=btn-reset-defaults class=btn btn-dangerRestore Default Rulesbutton
-      div
-    section
-  main
+          <input type="file" id="btn-import" accept=".json" style="display:none;">
+        </label>
+        <p class="subtext" id="last-backup" style="margin-top:10px;">Last export: Never</p>
+      </div>
+      <div class="card">
+        <h3>Edit Game Config</h3>
+        <p class="subtext">Select a category to edit names, XP, and order.</p>
+        <select id="edit-category" class="input-full">
+          <option value="mainQuests">Main Quests</option>
+          <option value="extras">Extras</option>
+          <option value="enemies">Enemies</option>
+        </select>
+        <div id="edit-list-container" style="margin-top: 15px;"></div>
+        <button id="btn-add-item" class="btn btn-outline" style="margin-top:10px;">+ Add New Item</button>
+      </div>
+      <div class="card">
+        <button id="btn-reset-defaults" class="btn btn-danger">Restore Default Rules</button>
+      </div>
+    </section>
+  </main>
 
-  nav class=bottom-nav
-    button class=nav-btn active data-target=tab-todayTodaybutton
-    button class=nav-btn data-target=tab-progressProgressbutton
-    button class=nav-btn data-target=tab-editDataEditbutton
-  nav
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-target="tab-today">Today</button>
+    <button class="nav-btn" data-target="tab-progress">Progress</button>
+    <button class="nav-btn" data-target="tab-edit">Data/Edit</button>
+  </nav>
 
-  script src=app.jsscript
-body
-html
+  <script src="app.js"></script>
+</body>
+</html>
