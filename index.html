@@ -71,14 +71,34 @@
         <ul class="list" id="main-quests-list"></ul>
       </section>
 
+      <!-- OPTIONAL EXTRAS (Unlocked Everyday) -->
       <section class="block">
-        <header class="block-head"><h2>Extras, tier 1</h2><span class="badge" id="t1-status"></span></header>
+        <header class="block-head"><h2>Optional extras</h2><span class="badge on">Always unlocked</span></header>
+        <ul class="list" id="opt-list"></ul>
+      </section>
+
+      <!-- EXTRAS TIER 1 -->
+      <section class="block">
+        <header class="block-head">
+          <h2>Extras, tier 1</h2>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="badge" id="t1-status"></span>
+            <button type="button" class="q-tag q-fold" id="t1-fold-btn" data-sec-fold="tier1" aria-expanded="false"></button>
+          </div>
+        </header>
         <div class="lock-panel" id="t1-lock" hidden></div>
         <ul class="list" id="t1-list"></ul>
       </section>
 
+      <!-- EXTRAS TIER 2 -->
       <section class="block">
-        <header class="block-head"><h2>Extras, tier 2</h2><span class="badge" id="t2-status"></span></header>
+        <header class="block-head">
+          <h2>Extras, tier 2</h2>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="badge" id="t2-status"></span>
+            <button type="button" class="q-tag q-fold" id="t2-fold-btn" data-sec-fold="tier2" aria-expanded="false"></button>
+          </div>
+        </header>
         <div class="lock-panel" id="t2-lock" hidden></div>
         <ul class="list" id="t2-list"></ul>
       </section>
@@ -110,12 +130,6 @@
       <section class="block">
         <header class="block-head"><h2>This week</h2><span class="count" id="week-xp">0 XP</span></header>
         <div class="week" id="week-boxes"></div>
-        <label class="q-main boss">
-          <input type="checkbox" id="boss-check" class="q-check">
-          <span class="box"></span>
-          <span class="q-name">Weekly boss defeated</span>
-          <span class="q-xp">+150</span>
-        </label>
         <div class="review">
           <h3>Weekly review <span>+50 XP</span></h3>
           <input type="text" class="field" id="review-win" placeholder="Biggest win" autocomplete="off">
@@ -151,6 +165,7 @@
         <header class="block-head"><h2>Rules</h2></header>
         <div class="seg" id="edit-tabs" role="tablist">
           <button class="seg-btn active" data-cat="mainQuests">Main</button>
+          <button class="seg-btn" data-cat="optional">Optional</button>
           <button class="seg-btn" data-cat="tier1">Tier 1</button>
           <button class="seg-btn" data-cat="tier2">Tier 2</button>
           <button class="seg-btn" data-cat="enemies">Enemies</button>
