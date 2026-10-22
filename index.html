@@ -2,155 +2,201 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Habit Gamified</title>
   <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0E1218" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#EDF0F5" media="(prefers-color-scheme: light)">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <meta name="theme-color" content="#121212">
 </head>
 <body>
-  <div id="confetti-container"></div>
-  
-  <header class="top-bar">
-    <div class="logo">Habit Gamified</div>
-    <div class="date-selector">
-      <button id="prev-day">◀</button>
-      <input type="date" id="date-picker">
-      <button id="next-day">▶</button>
-      <button id="today-btn">Today</button>
+  <div id="confetti-container" aria-hidden="true"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <header class="topbar">
+    <div class="topbar-in">
+      <div class="date-nav">
+        <button id="prev-day" class="icon-btn" aria-label="Previous day">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+        <label class="date-label">
+          <span id="date-text">Today</span>
+          <input type="date" id="date-picker" aria-label="Pick a date">
+        </label>
+        <button id="next-day" class="icon-btn" aria-label="Next day">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+        <button id="today-btn" class="chip" hidden>Back to today</button>
+      </div>
+      <div class="rank-chip" id="header-rank">Iron I</div>
     </div>
-    <div class="rank-badge" id="header-rank">Iron I</div>
   </header>
 
-  <main class="app-container">
-    <!-- TODAY TAB -->
-    <section id="tab-today" class="tab-content active">
-      <div class="card day-card">
-        <div class="day-header">
-          <h2 id="day-grade">C</h2>
-          <div>
-            <h1 id="day-net-xp">0 XP</h1>
-            <p id="day-message">Let's lock in.</p>
+  <main class="wrap">
+
+    <!-- TODAY -->
+    <section id="tab-today" class="tab active">
+      <section class="hud" id="hud" aria-label="Score for this day">
+        <div class="hud-top">
+          <div class="emblem" aria-hidden="true"><span id="day-grade">F</span></div>
+          <div class="hud-main">
+            <div class="hud-xp"><span id="day-net-xp">0</span><span class="hud-unit">XP</span></div>
+            <p class="hud-msg" id="day-message">Let's lock in.</p>
           </div>
         </div>
-        <div class="progress-track">
-          <div class="progress-fill" id="day-progress-fill"></div>
-          <div class="marker" style="left: 30%;" title="Day Clear (220)"></div>
-          <div class="marker" style="left: 55%;" title="Tier 2"></div>
+        <div class="meter" aria-hidden="true">
+          <div class="meter-track">
+            <div class="meter-fill" id="grade-fill"></div>
+            <i style="left:15.38%"></i><i style="left:33.85%"></i><i style="left:53.85%"></i><i style="left:76.92%"></i>
+          </div>
+          <div class="meter-marks">
+            <span data-g="D" style="left:15.38%">D</span>
+            <span data-g="C" style="left:33.85%">C</span>
+            <span data-g="B" style="left:53.85%">B</span>
+            <span data-g="A" style="left:76.92%">A</span>
+            <span data-g="S" style="left:100%">S</span>
+          </div>
         </div>
-        <p class="stats-line" id="main-quest-count">Main quests 0/9</p>
-      </div>
+        <div class="hud-foot">
+          <span id="base-xp">Quest XP 0</span>
+          <span id="next-grade-hint"></span>
+        </div>
+      </section>
 
-      <div class="card">
-        <h3>Main Quests</h3>
-        <div id="main-quests-list" class="quest-list"></div>
-      </div>
+      <section class="block">
+        <header class="block-head"><h2>Main quests</h2><span class="count" id="main-count">0/0</span></header>
+        <ul class="list" id="main-quests-list"></ul>
+      </section>
 
-      <div class="card">
-        <h3>Extras: Tier 1</h3>
-        <div id="t1-lock" class="lock-banner">Unlocks at 220 XP.</div>
-        <div id="t1-list" class="quest-list locked-section"></div>
-      </div>
+      <section class="block">
+        <header class="block-head"><h2>Extras, tier 1</h2><span class="badge" id="t1-status"></span></header>
+        <div class="lock-panel" id="t1-lock" hidden></div>
+        <ul class="list" id="t1-list"></ul>
+      </section>
 
-      <div class="card">
-        <h3>Extras: Tier 2</h3>
-        <div id="t2-lock" class="lock-banner">Unlocks at 400 XP.</div>
-        <div id="t2-list" class="quest-list locked-section"></div>
-      </div>
+      <section class="block">
+        <header class="block-head"><h2>Extras, tier 2</h2><span class="badge" id="t2-status"></span></header>
+        <div class="lock-panel" id="t2-lock" hidden></div>
+        <ul class="list" id="t2-list"></ul>
+      </section>
 
-      <div class="card enemies-card">
-        <h3>Enemies</h3>
-        <p class="subtext">Hits reduce today's Net XP.</p>
-        <div id="enemies-list" class="enemy-list"></div>
-      </div>
+      <section class="block enemies">
+        <header class="block-head"><h2>Enemies</h2><span class="count count-danger" id="enemy-total">None today</span></header>
+        <p class="hint">Check an enemy when it gets you. Uncheck it to undo.</p>
+        <ul class="list" id="enemies-list"></ul>
+      </section>
 
-      <details class="card xp-breakdown">
-        <summary>XP Breakdown</summary>
+      <details class="block breakdown">
+        <summary>XP breakdown</summary>
         <div id="breakdown-content"></div>
       </details>
     </section>
 
-    <!-- PROGRESS TAB -->
-    <section id="tab-progress" class="tab-content">
-      <div class="card">
-        <div class="flex-between">
-          <h3>Streak</h3>
-          <button id="toggle-chart" class="btn-small">Toggle Chart</button>
+    <!-- PROGRESS -->
+    <section id="tab-progress" class="tab">
+      <section class="block first">
+        <header class="block-head"><h2>Streak</h2></header>
+        <div class="stats3">
+          <div><b id="streak-cur">0</b><span>day streak</span></div>
+          <div><b id="streak-best">0</b><span>best</span></div>
+          <div><b id="streak-mult">x1</b><span>quest bonus</span></div>
         </div>
-        <p id="streak-stats">Current: 0 | Best: 0 | Multiplier: 1x | Shields: 0</p>
-        <div id="heatmap-container" class="heatmap"></div>
-        <canvas id="line-chart" style="display:none; width:100%; height:150px;"></canvas>
-      </div>
+        <div id="heatmap-container" class="heatmap" role="img" aria-label="Daily grades this season"></div>
+      </section>
 
-      <div class="card">
-        <h3>This Week</h3>
-        <p id="weekly-score">Score: 0 XP</p>
-        <div class="week-boxes" id="week-boxes"></div>
-        <hr>
-        <h4>Weekly Bonuses</h4>
-        <div id="weekly-bonuses" class="quest-list"></div>
-        <hr>
-        <h4 id="weekly-boss-title">Boss</h4>
-        <p class="subtext" id="weekly-boss-desc"></p>
-        <label class="quest-item"><input type="checkbox" id="boss-check"> <span class="custom-check"></span> Beat Boss (+150 XP)</label>
-        <hr>
-        <h4>Weekly Review (+50 XP)</h4>
-        <input type="text" id="review-win" placeholder="Biggest win...">
-        <input type="text" id="review-enemy" placeholder="Costliest enemy...">
-        <input type="text" id="review-rule" placeholder="Rule for next week...">
-        <button id="save-review" class="btn-small">Save & Claim</button>
-      </div>
-
-      <div class="card">
-        <h3>Attributes</h3>
-        <div id="attributes-list"></div>
-      </div>
-
-      <div class="card">
-        <h3>Rank Ladder</h3>
-        <p id="rank-progress-text">0 XP to Next</p>
-        <div class="progress-track"><div class="progress-fill" id="rank-progress-fill"></div></div>
-      </div>
-
-      <div class="card">
-        <h3>Achievements</h3>
-        <div id="achievements-list" class="achievements-grid"></div>
-      </div>
-    </section>
-
-    <!-- EDIT TAB -->
-    <section id="tab-edit" class="tab-content">
-      <div class="card">
-        <h3>Data & Backup</h3>
-        <button id="btn-export" class="btn">Export Backup</button>
-        <label class="btn btn-outline" style="display:block; text-align:center; margin-top:10px;">
-          Import Backup
-          <input type="file" id="btn-import" accept=".json" style="display:none;">
+      <section class="block">
+        <header class="block-head"><h2>This week</h2><span class="count" id="week-xp">0 XP</span></header>
+        <div class="week" id="week-boxes"></div>
+        <label class="q-main boss">
+          <input type="checkbox" id="boss-check" class="q-check">
+          <span class="box"></span>
+          <span class="q-name">Weekly boss defeated</span>
+          <span class="q-xp">+150</span>
         </label>
-        <p class="subtext" id="last-backup" style="margin-top:10px;">Last export: Never</p>
-      </div>
-      <div class="card">
-        <h3>Edit Game Config</h3>
-        <p class="subtext">Select a category to edit names, XP, and order.</p>
-        <select id="edit-category" class="input-full">
-          <option value="mainQuests">Main Quests</option>
-          <option value="extras">Extras</option>
-          <option value="enemies">Enemies</option>
-        </select>
-        <div id="edit-list-container" style="margin-top: 15px;"></div>
-        <button id="btn-add-item" class="btn btn-outline" style="margin-top:10px;">+ Add New Item</button>
-      </div>
-      <div class="card">
-        <button id="btn-reset-defaults" class="btn btn-danger">Restore Default Rules</button>
-      </div>
+        <div class="review">
+          <h3>Weekly review <span>+50 XP</span></h3>
+          <input type="text" class="field" id="review-win" placeholder="Biggest win" autocomplete="off">
+          <input type="text" class="field" id="review-enemy" placeholder="Costliest enemy" autocomplete="off">
+          <input type="text" class="field" id="review-rule" placeholder="Rule for next week" autocomplete="off">
+          <button id="save-review" class="btn btn-block">Save review</button>
+        </div>
+      </section>
+
+      <section class="block">
+        <header class="block-head"><h2>Attributes</h2></header>
+        <div id="attributes-list"></div>
+      </section>
+
+      <section class="block">
+        <header class="block-head"><h2>Rank</h2><span class="count" id="season-xp">0 XP</span></header>
+        <div class="rank-now" id="rank-name">Iron I</div>
+        <div class="bar rank-bar"><i id="rank-progress-fill"></i></div>
+        <p class="hint" id="rank-progress-text"></p>
+        <div class="rank-segs" id="rank-segs"></div>
+        <p class="hint" id="rank-source"></p>
+      </section>
+
+      <section class="block">
+        <header class="block-head"><h2>Achievements</h2><span class="count" id="ach-count">0/0</span></header>
+        <div class="ach-grid" id="achievements-list"></div>
+      </section>
     </section>
+
+    <!-- EDIT -->
+    <section id="tab-edit" class="tab">
+      <section class="block first">
+        <header class="block-head"><h2>Rules</h2></header>
+        <div class="seg" id="edit-tabs" role="tablist">
+          <button class="seg-btn active" data-cat="mainQuests">Main</button>
+          <button class="seg-btn" data-cat="tier1">Tier 1</button>
+          <button class="seg-btn" data-cat="tier2">Tier 2</button>
+          <button class="seg-btn" data-cat="enemies">Enemies</button>
+        </div>
+        <ul class="edit-list" id="edit-list-container"></ul>
+        <button id="btn-add-item" class="btn btn-ghost btn-block">Add quest</button>
+      </section>
+
+      <section class="block">
+        <header class="block-head"><h2>Backup</h2></header>
+        <p class="hint" id="last-backup">Last backup: never</p>
+        <div class="btn-row">
+          <button id="btn-export" class="btn">Export backup</button>
+          <label class="btn btn-ghost">
+            Import backup
+            <input type="file" id="btn-import" accept=".json,application/json" hidden>
+          </label>
+        </div>
+      </section>
+
+      <section class="block">
+        <header class="block-head"><h2>Reset</h2></header>
+        <p class="hint">Puts every quest, enemy and rank back to the original rules. Your history stays.</p>
+        <button id="btn-reset-defaults" class="btn btn-danger btn-block">Restore default rules</button>
+      </section>
+    </section>
+
   </main>
 
-  <nav class="bottom-nav">
+  <nav class="bottom-nav" aria-label="Sections">
     <button class="nav-btn active" data-target="tab-today">Today</button>
     <button class="nav-btn" data-target="tab-progress">Progress</button>
-    <button class="nav-btn" data-target="tab-edit">Data/Edit</button>
+    <button class="nav-btn" data-target="tab-edit">Edit</button>
   </nav>
+
+  <dialog id="import-dialog">
+    <form method="dialog">
+      <h3>Import backup</h3>
+      <p>Merge adds days you don't have yet and keeps the fuller version of days you do. Replace swaps everything for the backup.</p>
+      <div class="dlg-actions">
+        <button class="btn" value="merge">Merge</button>
+        <button class="btn btn-danger" value="replace">Replace all</button>
+        <button class="btn btn-ghost" value="cancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="app.js"></script>
 </body>
