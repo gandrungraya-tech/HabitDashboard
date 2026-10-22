@@ -3,6 +3,8 @@
 
 // --- 1. DEFAULT RULES ---
 const defaultConfig = {
+  playerName: "Player",
+  pin: "000",
   seasonStartDate: "2026-10-01",
   mainQuests: [
     { id: "mq1a", name: "Wake 5 AM or earlier", xp: 20, attr: "VITALITY" },
@@ -113,8 +115,8 @@ const defaultConfig = {
 
 // --- 2. CONSTANTS & HELPERS ---
 const STORAGE_KEY = 'habitGamifiedDB';
-const T1_REQ = 220;                    // quest XP needed to open Extras tier 1
-const COUNT_BONUS_IN_SEASON = true;    // weekly review and achievements add to season XP
+const T1_REQ = 220;
+const COUNT_BONUS_IN_SEASON = true;
 const REVIEW_XP = 50;
 const GRADES = [['D', 100], ['C', 220], ['B', 350], ['A', 500], ['S', 650]];
 const GRADE_MAX = 650;
@@ -181,10 +183,13 @@ function collapseEnemies(list, enemyCfg) {
 function normalize(raw) {
   const d = Object.assign(freshDB(), raw && typeof raw === 'object' ? raw : {});
   d.config = Object.assign(clone(defaultConfig), d.config || {});
+  
+  if (!d.config.playerName) d.config.playerName = "Player";
+  if (!d.config.pin) d.config.pin = "000";
+
   ['mainQuests', 'extras', 'enemies', 'achievements', 'ranks'].forEach(k => {
     if (!Array.isArray(d.config[k])) d.config[k] = clone(defaultConfig[k]);
   });
-  // Migration: ensure optional extras have tier: 0
   const optIds = ['e11', 'e12', 'e13', 'e16'];
   d.config.extras.forEach(item => {
     if (optIds.includes(item.id)) item.tier = 0;
@@ -212,7 +217,6 @@ function loadData() {
   if (!raw) return normalize(null);
   try { return normalize(JSON.parse(raw)); }
   catch (e) {
-    try { localStorage.setItem(STORAGE_KEY + '_corrupt', raw); } catch (_) { /* ignore */ }
     return normalize(null);
   }
 }
@@ -222,7 +226,7 @@ const statsCache = new Map();
 function saveData() {
   statsCache.clear();
   db.updatedAt = Date.now();
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); } catch (e) { toast('Could not save. Storage is full or blocked.'); }
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); } catch (e) { toast('Could not save.'); }
 }
 
 let currentDate = todayKey();
@@ -340,7 +344,101 @@ function weeklyDoneOn(id, key) {
   return weekDays(key).find(d => d !== key && db.logs[d] && db.logs[d].ticked[id]) || null;
 }
 
-// --- 5. FEEDBACK ---
+// --- 5. AUTOMATIC ACHIEVEMENTS & PIN LOGIC ---
+function checkPinLock() {
+  const unlockedDate = localStorage.getItem('habitPinUnlockedDate');
+  if (unlockedDate !== todayKey()) {
+    const pinDialog = $('pin-dialog');
+    if (pinDialog && pinDialog.showModal && !pinDialog.open) {
+      pinDialog.showModal();
+      pinDialog.addEventListener('cancel', e => e.preventDefault()); // Prevent escaping
+      if($('pin-input'))$('pin-input').value = '';
+    }
+  }
+}
+
+if($('btn-unlock')) {$('btn-unlock').addEventListener('click', (e) => {
+    e.preventDefault();
+    if ($('pin-input').value === db.config.pin) {
+      localStorage.setItem('habitPinUnlockedDate', todayKey());
+      $('pin-dialog').close();
+    } else {
+      toast('Incorrect PIN');
+      $('pin-input').value = '';
+    }
+  });
+}
+
+function checkAchievements() {
+  const achs = db.config.achievements;
+  const unl = new Set(db.unlockedAch);
+  let newlyUnlocked = [];
+  
+  const logKeys = Object.keys(db.logs).sort();
+  let totalClears = 0, comebacks = 0;
+  let curEarly = 0, maxEarly = 0;
+  let curMonk = 0, maxMonk = 0;
+  let e16Count = 0, voiceDays = 0, rigHours = 0, e12Count = 0;
+  let prevGrade = null;
+  let weekUntouchable = {};
+
+  logKeys.forEach(k => {
+    const log = db.logs[k];
+    const s = stats(k);
+    
+    if (s.isClear) totalClears++;
+    
+    if (log.ticked['mq1a']) curEarly++; else curEarly = 0;
+    maxEarly = Math.max(maxEarly, curEarly);
+    
+    if (log.ticked['mq8']) curMonk++; else curMonk = 0;
+    maxMonk = Math.max(maxMonk, curMonk);
+    
+    if (log.ticked['mq3']) voiceDays++;
+    if (log.ticked['e16']) e16Count++;
+    if (log.ticked['e12']) e12Count++;
+    if (log.ticked['e8']) rigHours += 0.5;
+    if (log.ticked['e8a']) rigHours += 2.0;
+
+    if (s.isClear && (prevGrade === 'D' || prevGrade === 'F')) comebacks++;
+    prevGrade = s.grade;
+    
+    if (s.untouchable) {
+       let w = getWeekStr(k);
+       weekUntouchable[w] = (weekUntouchable[w] || 0) + 1;
+    }
+  });
+  
+  const maxUntouchableWeek = Math.max(0, ...Object.values(weekUntouchable));
+
+  const conditions = {
+    'a1': () => totalClears >= 1,
+    'a2': () => maxEarly >= 7,
+    'a3': () => maxMonk >= 7,
+    'a4': () => voiceDays >= 20,
+    'a5': () => e16Count >= 3, // Animate for Yourself
+    'a6': () => maxUntouchableWeek >= 7,
+    'a7': () => comebacks >= 3,
+    'a8': () => rigHours >= 13,
+    'a9': () => e12Count >= 5, // Proxy: 5 Long Runs
+    'a10': () => logKeys.length >= 90
+  };
+
+  achs.forEach(a => {
+    if (!unl.has(a.id) && conditions[a.id] && conditions[a.id]()) {
+       db.unlockedAch.push(a.id);
+       newlyUnlocked.push(a.name);
+    }
+  });
+
+  if (newlyUnlocked.length > 0) {
+    saveData();
+    newlyUnlocked.forEach(name => toast('Achievement unlocked: ' + name));
+    celebrate();
+  }
+}
+
+// --- 6. FEEDBACK ---
 let toastTimer;
 function toast(msg) {
   const t = $('toast'); if (!t) return;
@@ -365,7 +463,7 @@ function celebrate(msg) {
   setTimeout(() => { c.innerHTML = ''; }, 3800);
 }
 
-// --- 6. RENDER: TODAY ---
+// --- 7. RENDER: TODAY ---
 function renderUI() {
   const log = ensureDay(currentDate); ensureWeek(currentWeekStr);
   const s = stats(currentDate);
@@ -379,6 +477,12 @@ function renderUI() {
   renderQuests(s, log);
   renderEnemies(log, s);
   renderBreakdown(s);
+  
+  // Settings Tab Update
+  if($('setting-name'))$('setting-name').value = db.config.playerName || '';
+  if($('setting-pin'))$('setting-pin').value = db.config.pin || '000';
+
+  checkAchievements(); 
   renderProgress();
 }
 
@@ -415,7 +519,7 @@ function qRow(q, log, key, sectionLocked, kids, open) {
   if (note) tag = `<span class="q-tag">${esc(note)}</span>`;
   else if (kids && kids.length) {
     const n = kids.filter(k => log.ticked[k.id]).length;
-    tag = `<button type="button" class="q-tag q-fold" data-fold="${esc(q.id)}" aria-expanded="${open}" aria-label="Bonus objectives, ${n} of ${kids.length} done">${n}/${kids.length}${CHEVRON_SVG}</button>`;
+    tag = `<button type="button" class="q-tag q-fold" data-fold="${esc(q.id)}" aria-expanded="${open}" aria-label="Bonus objectives">${n}/${kids.length}${CHEVRON_SVG}</button>`;
   } else if (q.weeklyOnce) tag = '<span class="q-tag">once a week</span>';
   const cid = `chk-${esc(q.id)}`;
   return `<div class="q ${done ? 'is-done' : ''} ${locked ? 'is-locked' : ''}"><div class="q-line">
@@ -448,7 +552,6 @@ function renderQuests(s, log) {
   if ($('main-count'))$('main-count').textContent = `${req.filter(q => log.ticked[q.id]).length}/${req.length}`;
   if ($('main-quests-list'))$('main-quests-list').innerHTML = questRows(mq.filter(q => !q.parent), mq, log, currentDate, false);
 
-  // Render Optional Extras (Tier 0 - Always Unlocked)
   const optList = $('opt-list');
   if (optList) {
     const optTops = db.config.extras.filter(q => !q.parent && q.tier === 0);
@@ -479,7 +582,6 @@ function renderTier(n, req, s, log) {
     }
   }
 
-  // Tier section fold button
   const foldKey = `sec-tier${n}`;
   const isFoldSet = folds.has(foldKey);
   const open = isFoldSet ? folds.get(foldKey) : unlocked;
@@ -547,7 +649,7 @@ function renderBreakdown(s) {
   if ($('breakdown-content')) $('breakdown-content').innerHTML = h;
 }
 
-// --- 7. RENDER: PROGRESS ---
+// --- 8. RENDER: PROGRESS ---
 function renderProgress() {
   const si = streakInfo(), todayMult = stats(todayKey()).mult;
   if ($('streak-cur')) $('streak-cur').textContent = si.cur;
@@ -644,12 +746,12 @@ function renderAchievements() {
   if ($('achievements-list')) {
     $('achievements-list').innerHTML = list.map(a => {
       const on = db.unlockedAch.includes(a.id);
-      return `<button class="ach ${on ? 'on' : ''}" data-id="${esc(a.id)}" aria-pressed="${on}"><b>${esc(a.name)}</b><small>+${a.xp} XP</small></button>`;
+      return `<div class="ach ${on ? 'on' : ''}"><b>${esc(a.name)}</b><small>+${a.xp} XP</small></div>`;
     }).join('');
   }
 }
 
-// --- 8. EVENTS ---
+// --- 9. EVENTS ---
 function snapshot() {
   const s = stats(currentDate);
   return { clear: s.isClear, t1: s.base >= T1_REQ, t2: s.base >= t2Req(currentDate) };
@@ -715,7 +817,12 @@ document.addEventListener('click', e => {
   const t = e.target;
   const nav = t.closest('.nav-btn'); if (nav) return switchTab(nav.dataset.target);
   
-  // Section Fold
+  if (t.id === 'header-rank') {
+    populateProfile();
+    $('profile-dialog').showModal();
+    return;
+  }
+  
   const secFold = t.closest('[data-sec-fold]');
   if (secFold) {
     const key = `sec-${secFold.dataset.secFold}`;
@@ -724,7 +831,6 @@ document.addEventListener('click', e => {
     return renderUI();
   }
 
-  // Quest Fold
   const fold = t.closest('.q-fold');
   if (fold) { folds.set(fold.dataset.fold, !folds.get(fold.dataset.fold)); return renderUI(); }
 
@@ -738,13 +844,15 @@ document.addEventListener('click', e => {
   if (t.closest('#next-day')) return setDate(addDays(currentDate, 1));
   if (t.closest('#today-btn')) return setDate(todayKey());
   const wd = t.closest('.wd'); if (wd) return setDate(wd.dataset.date);
-  const ach = t.closest('.ach');
-  if (ach) {
-    const id = ach.dataset.id;
-    if (db.unlockedAch.includes(id)) db.unlockedAch = db.unlockedAch.filter(i => i !== id);
-    else { db.unlockedAch.push(id); celebrate('Achievement unlocked'); }
-    saveData(); renderUI(); return;
+  
+  if (t.id === 'btn-save-settings') {
+    db.config.playerName = $('setting-name').value.trim() || 'Player';
+    db.config.pin = $('setting-pin').value.trim() || '000';
+    saveData();
+    toast('Settings saved');
+    return;
   }
+
   if (t.closest('#save-review')) {
     const wk = ensureWeek(currentWeekStr);
     wk.review = { win: $('review-win').value, enemy: $('review-enemy').value, rule: $('review-rule').value };
@@ -760,7 +868,42 @@ if ($('date-picker')) {
   $('date-picker').addEventListener('click', () => { try { $('date-picker').showPicker(); } catch (e) { /* fallback */ } });
 }
 
-// --- 9. EDIT TAB ---
+// --- 10. PROFILE POPUP LOGIC ---
+function populateProfile() {
+  const name = db.config.playerName || 'Player';
+  $('prof-name').textContent = name;
+  $('prof-ava').textContent = name.charAt(0).toUpperCase();
+
+  const lad = ladder();
+  let daily = 0; for (const k in db.logs) daily += stats(k).net;
+  const bonus = COUNT_BONUS_IN_SEASON ? bonusXP() : 0;
+  const total = daily + bonus;
+  let idx = 0; lad.forEach((r, i) => { if (total >= r.xp) idx = i; });
+  $('prof-rank').textContent = lad[idx].label;
+  
+  $('prof-xp').textContent = fmt(total);
+  
+  let totalClears = 0;
+  Object.keys(db.logs).forEach(k => { if(dayIsClear(k)) totalClears++; });
+  $('prof-clears').textContent = totalClears;
+
+  const attrs = Object.entries(db.attributes).sort((a,b) => b[1] - a[1]);
+  if(attrs.length > 0 && attrs[0][1] > 0) {
+    const best = attrs[0];
+    const worst = attrs[attrs.length - 1];
+    
+    let bestLv = 1; ATTR_LEVELS.forEach((t, i) => { if (best[1] >= t) bestLv = i + 1; });
+    let worstLv = 1; ATTR_LEVELS.forEach((t, i) => { if (worst[1] >= t) worstLv = i + 1; });
+    
+    $('prof-strong').textContent = `${cap(best[0])} (Lv ${bestLv})`;
+    $('prof-weak').textContent = `${cap(worst[0])} (Lv ${worstLv})`;
+  } else {
+    $('prof-strong').textContent = 'None yet';
+    $('prof-weak').textContent = 'None yet';
+  }
+}
+
+// --- 11. EDIT TAB ---
 const EDIT_CATS = {
   mainQuests: { arr: 'mainQuests', noun: 'quest' },
   optional: { arr: 'extras', tier: 0, noun: 'quest' },
@@ -881,7 +1024,7 @@ if ($('btn-reset-defaults')) {
   });
 }
 
-// --- 10. BACKUP ---
+// --- 12. BACKUP ---
 function renderBackupInfo() {
   if ($('last-backup')) {
     $('last-backup').textContent = 'Last backup: ' + (db.lastExport
@@ -948,15 +1091,17 @@ function applyImport(mode) {
   toast(mode === 'replace' ? 'Backup restored' : 'Backup merged');
 }
 
-// --- 11. BOOT ---
+// --- 13. BOOT ---
 let bootToday = todayKey();
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible' || todayKey() === bootToday) return;
   const wasOnToday = currentDate === bootToday;
   bootToday = todayKey();
   if (wasOnToday) setDate(bootToday); else renderUI();
+  checkPinLock(); // Check if day rolled over
 });
 
 setEditCat('mainQuests');
 renderUI();
 renderBackupInfo();
+checkPinLock();
