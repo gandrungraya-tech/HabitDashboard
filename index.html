@@ -31,7 +31,12 @@
         </button>
         <button id="today-btn" class="chip" hidden>Back to today</button>
       </div>
-      <button class="rank-chip" id="header-rank" aria-label="Open Profile">Iron I</button>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <button id="btn-cloud-sync" class="icon-btn" aria-label="Cloud Sync">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+        </button>
+        <button class="rank-chip" id="header-rank" aria-label="Open Profile">Iron I</button>
+      </div>
     </div>
   </header>
 
@@ -163,14 +168,18 @@
     <!-- EDIT -->
     <section id="tab-edit" class="tab">
       <section class="block first">
-        <header class="block-head"><h2>Settings</h2></header>
+        <header class="block-head"><h2>Settings & Cloud Sync</h2></header>
         <div class="er-line" style="margin-bottom:10px;">
           <input type="text" id="setting-name" class="field" placeholder="Player Name">
+          <input type="password" id="setting-pin" class="field" inputmode="numeric" maxlength="3" placeholder="3-Digit PIN" style="max-width:110px;">
         </div>
-        <div class="er-line">
-          <input type="text" id="setting-pin" class="field" inputmode="numeric" maxlength="3" placeholder="3-Digit PIN (Default: 000)">
-          <button id="btn-save-settings" class="btn">Save</button>
+        <div class="er-line" style="margin-bottom:10px;">
+          <input type="password" id="setting-jsonbin-key" class="field" placeholder="JSONBin Master Key (Optional)">
         </div>
+        <div class="er-line" style="margin-bottom:10px;">
+          <input type="text" id="setting-jsonbin-id" class="field" placeholder="JSONBin Bin ID (Optional)">
+        </div>
+        <button id="btn-save-settings" class="btn btn-block">Save Settings</button>
       </section>
 
       <section class="block">
@@ -187,12 +196,12 @@
       </section>
 
       <section class="block">
-        <header class="block-head"><h2>Backup</h2></header>
+        <header class="block-head"><h2>Manual Backup</h2></header>
         <p class="hint" id="last-backup">Last backup: never</p>
         <div class="btn-row">
-          <button id="btn-export" class="btn">Export backup</button>
+          <button id="btn-export" class="btn">Export file</button>
           <label class="btn btn-ghost">
-            Import backup
+            Import file
             <input type="file" id="btn-import" accept=".json,application/json" hidden>
           </label>
         </div>
@@ -212,6 +221,20 @@
     <button class="nav-btn" data-target="tab-progress">Progress</button>
     <button class="nav-btn" data-target="tab-edit">Edit</button>
   </nav>
+
+  <!-- CLOUD SYNC MODAL -->
+  <dialog id="sync-dialog">
+    <form method="dialog">
+      <h3>Cloud Sync ☁️</h3>
+      <p class="hint" style="margin-bottom: 16px;">Make sure your JSONBin keys are entered in the Settings tab first.</p>
+      <div class="dlg-actions">
+        <button class="btn" id="btn-sync-push">Push to Cloud (Upload)</button>
+        <button class="btn btn-ghost" id="btn-sync-pull">Pull & Merge (Download)</button>
+        <button class="btn btn-danger" id="btn-sync-pull-replace" style="margin-top: 12px;">Pull & Replace All Data</button>
+        <button class="btn btn-ghost" value="cancel" style="margin-top: 12px;">Cancel</button>
+      </div>
+    </form>
+  </dialog>
 
   <!-- PROFILE MODAL -->
   <dialog id="profile-dialog">
@@ -247,8 +270,8 @@
 
   <dialog id="import-dialog">
     <form method="dialog">
-      <h3>Import backup</h3>
-      <p>Merge adds days you don't have yet and keeps the fuller version of days you do. Replace swaps everything for the backup.</p>
+      <h3>Import file</h3>
+      <p>Merge adds days you don't have yet. Replace swaps everything.</p>
       <div class="dlg-actions">
         <button class="btn" value="merge">Merge</button>
         <button class="btn btn-danger" value="replace">Replace all</button>
